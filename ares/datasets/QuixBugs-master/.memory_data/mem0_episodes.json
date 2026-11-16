@@ -1,0 +1,289 @@
+[
+  {
+    "id": "mem_seed_1",
+    "text": "Algorithmic Invariant: In bitcount, Brian Kernighan algorithm must use n &= n - 1 to clear the lowest set bit. Using n ^= n - 1 flips bits and creates an infinite loop.",
+    "metadata": {
+      "algorithm": "bitcount",
+      "category": "bitwise",
+      "verified": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "mem0_agent",
+    "created_at": "2026-11-05T16:47:43.892444"
+  },
+  {
+    "id": "mem_seed_2",
+    "text": "Graph Search Invariant: In breadth_first_search, newly discovered neighbors must be immediately added to 'nodesvisited' when queued, otherwise cyclic graphs trigger infinite loops.",
+    "metadata": {
+      "algorithm": "breadth_first_search",
+      "category": "graph",
+      "verified": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "mem0_agent",
+    "created_at": "2026-11-05T16:47:43.892444"
+  },
+  {
+    "id": "mem_seed_3",
+    "text": "Sorting Invariant: In quicksort, partitioning strictly into lesser and greater subsets requires handling pivot equality correctly; otherwise duplicate elements trigger maximum recursion depth.",
+    "metadata": {
+      "algorithm": "quicksort",
+      "category": "sorting",
+      "verified": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "mem0_agent",
+    "created_at": "2026-11-05T16:47:43.892444"
+  },
+  {
+    "id": "mem_seed_4",
+    "text": "Anti-Hallucination Lesson: Verify mathematical and edge cases before declaring bugs. If all boundary assertions hold and variables update correctly, preserve clean code as valid.",
+    "metadata": {
+      "category": "anti_hallucination",
+      "verified": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "verifier",
+    "created_at": "2026-11-05T16:47:43.892444"
+  },
+  {
+    "id": "mem_5_1793886475",
+    "text": "Experience on ag_pjproject_None_199836: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_pjproject_None_199836",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:47:55.893075"
+  },
+  {
+    "id": "mem_6_1793886497",
+    "text": "Experience on ag_linux_cancel_360829: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_linux_cancel_360829",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:48:17.667860"
+  },
+  {
+    "id": "mem_7_1793886513",
+    "text": "Experience on ag_drogon_None_197057: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_drogon_None_197057",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:48:33.257638"
+  },
+  {
+    "id": "mem_8_1793886541",
+    "text": "Experience on ag_php-src_mbfilter_big5_464942: Identified defect 'Off-by-one error in range check' at c > c1 && c < 0xff. Fix logic: The condition `c > c1 && c < 0xff` does not include the value 0xff in the range. This means that if `c` is exactly 0xff, it will not be considered wit",
+    "metadata": {
+      "algorithm": "ag_php-src_mbfilter_big5_464942",
+      "is_buggy": true,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:49:01.762994"
+  },
+  {
+    "id": "mem_9_1793886566",
+    "text": "Experience on ag_pjproject_sdp_201007: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_pjproject_sdp_201007",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:49:26.999266"
+  },
+  {
+    "id": "mem_10_1793886583",
+    "text": "Experience on ag_tensorflow_optimized_ops_251946: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_tensorflow_optimized_ops_251946",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:49:43.206973"
+  },
+  {
+    "id": "mem_11_1793886635",
+    "text": "Experience on ag_ImageMagick6_bmp_210692: Identified defect 'Detected Defect' at N/A. Fix logic: No detailed explanation.",
+    "metadata": {
+      "algorithm": "ag_ImageMagick6_bmp_210692",
+      "is_buggy": true,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:50:35.603899"
+  },
+  {
+    "id": "mem_12_1793886649",
+    "text": "Experience on ag_cifs-utils_mount.cifs_444900: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_cifs-utils_mount.cifs_444900",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:50:49.305835"
+  },
+  {
+    "id": "mem_13_1793886679",
+    "text": "Experience on ag_linux_fastrpc_200695: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_linux_fastrpc_200695",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:51:19.475908"
+  },
+  {
+    "id": "mem_14_1793886714",
+    "text": "Experience on ag_gpac_box_code_base_226029: Identified defect 'Memory Corruption' at ptr->entries[i].name. Fix logic: The code does not check if `ptr->entries[i].name` is NULL before attempting to free it. If `ptr->entries[i].name` is NULL, calling `gf_free(ptr->entri",
+    "metadata": {
+      "algorithm": "ag_gpac_box_code_base_226029",
+      "is_buggy": true,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:51:54.897111"
+  },
+  {
+    "id": "mem_15_1793886750",
+    "text": "Experience on ag_gpac_box_code_base_195409: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_gpac_box_code_base_195409",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:52:30.192194"
+  },
+  {
+    "id": "mem_16_1793886776",
+    "text": "Experience on ag_mongo_None_483469: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_mongo_None_483469",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:52:56.509738"
+  },
+  {
+    "id": "mem_17_1793886816",
+    "text": "Experience on ag_tensorflow_sdca_internal_196790: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_tensorflow_sdca_internal_196790",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:53:36.307944"
+  },
+  {
+    "id": "mem_18_1793886847",
+    "text": "Experience on ag_linux_rtrs-clt_291761: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_linux_rtrs-clt_291761",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:54:07.647040"
+  },
+  {
+    "id": "mem_19_1793886870",
+    "text": "Experience on ag_jasper_jpc_enc_211785: Identified defect 'Detected Defect' at N/A. Fix logic: The provided code appears to be a function for configuring a JPEG-2000 encoder and does not contain any obvious bugs or issues that would cause an inf",
+    "metadata": {
+      "algorithm": "ag_jasper_jpc_enc_211785",
+      "is_buggy": true,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:54:30.919777"
+  },
+  {
+    "id": "mem_20_1793886903",
+    "text": "Experience on ag_lua_None_344242: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_lua_None_344242",
+      "is_buggy": false,
+      "approved": false
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:55:03.012282"
+  },
+  {
+    "id": "mem_21_1793886943",
+    "text": "Experience on ag_tensorflow_resource_variable_ops_196587: Identified defect 'Infinite Loop in Bitwise Update' at functor::ScatterScalarFunctor<Device, T, Index, op> functor; const Index bad_i = functor(c, c->template eigen_device<Device>(), params_flat, update, indices_flat);. Fix logic: The code does not handle the case where the `indices` tensor contains values outside the valid range [0, params->dim_size(0)). This can lead to an inf",
+    "metadata": {
+      "algorithm": "ag_tensorflow_resource_variable_ops_196587",
+      "is_buggy": true,
+      "approved": false
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:55:43.337326"
+  },
+  {
+    "id": "mem_22_1793886978",
+    "text": "Experience on ag_linux_control_387593: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_linux_control_387593",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:56:18.292652"
+  },
+  {
+    "id": "mem_23_1793887006",
+    "text": "Experience on ag_tensorflow_constant_folding_197826: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_tensorflow_constant_folding_197826",
+      "is_buggy": false,
+      "approved": true
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:56:46.023988"
+  },
+  {
+    "id": "mem_24_1793887026",
+    "text": "Experience on ag_openssl_None_506696: Verified clean code. Boundary conditions and logic confirmed sound.",
+    "metadata": {
+      "algorithm": "ag_openssl_None_506696",
+      "is_buggy": false,
+      "approved": false
+    },
+    "user_id": "evaluator",
+    "agent_id": "langgraph_mem0",
+    "created_at": "2026-11-05T16:57:06.269614"
+  }
+]

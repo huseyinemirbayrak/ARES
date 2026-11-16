@@ -1,0 +1,539 @@
+[
+  {
+    "problem_id": "MLCQ-TD-001",
+    "title": "Maximum Contiguous Telemetry Delta (Kadane Variant)",
+    "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)",
+    "severity": "major",
+    "function_name": "max_subarray_sum",
+    "description": "Compute the maximum sum of any contiguous non-empty subarray, returning 0 only if the input list is empty.",
+    "clean_code": "def max_subarray_sum(nums: list[int]) -> int:\n    if not nums:\n        return 0\n    best = nums[0]\n    curr = nums[0]\n    for x in nums[1:]:\n        curr = max(x, curr + x)\n        best = max(best, curr)\n    return best\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Standard mixed positive and negative integers",
+        "call_expr": "max_subarray_sum([-2, 1, -3, 4, -1, 2, 1, -5, 4])",
+        "expected_output": 6,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "All positive integers",
+        "call_expr": "max_subarray_sum([1, 2, 3, 4])",
+        "expected_output": 10,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Single positive element",
+        "call_expr": "max_subarray_sum([7])",
+        "expected_output": 7,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: All negative integers (must return largest negative, not 0)",
+        "call_expr": "max_subarray_sum([-8, -3, -6, -2, -5])",
+        "expected_output": -2,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Empty list returns 0",
+        "call_expr": "max_subarray_sum([])",
+        "expected_output": 0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M001_SUBTLE_NEG",
+        "defect_type": "negative_or_zero_edge_debt",
+        "strategy_name": "Zero-floored accumulator initialization debt",
+        "targeted_edge_case": "All-negative array input (T4)",
+        "mutated_code": "def max_subarray_sum(nums: list[int]) -> int:\n    if not nums:\n        return 0\n    best = max(0, nums[0])\n    curr = nums[0]\n    for x in nums[1:]:\n        curr = max(x, curr + x)\n        best = max(best, curr)\n    return best\n",
+        "explanation": "Initializes `best = max(0, nums[0])` instead of `nums[0]`, so T1, T2, T3, T5 pass (4/5), and only T4 fails (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M001_SUBTLE_EMPTY_SINGLE",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Singleton negative/empty guard shift",
+        "targeted_edge_case": "Empty list and single element boundary (T3, T5)",
+        "mutated_code": "def max_subarray_sum(nums: list[int]) -> int:\n    if len(nums) <= 1:\n        return -1\n    best = nums[0]\n    curr = nums[0]\n    for x in nums[1:]:\n        curr = max(x, curr + x)\n        best = max(best, curr)\n    return best\n",
+        "explanation": "Replaces `if not nums: return 0` with `if len(nums) <= 1: return -1`, breaking only T3 and T5 (2/5 broken).",
+        "expected_broken_count": 2
+      },
+      {
+        "mutation_id": "M001_OVERBROKEN",
+        "defect_type": "state_accumulation_debt",
+        "strategy_name": "Broken loop accumulator",
+        "targeted_edge_case": "All non-empty arrays",
+        "mutated_code": "def max_subarray_sum(nums: list[int]) -> int:\n    if not nums:\n        return 0\n    return 0\n",
+        "explanation": "Over-broken mutation that breaks 4 out of 5 tests.",
+        "expected_broken_count": 4
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-002",
+    "title": "SLA Latency Nearest-Rank Percentile Calculator",
+    "mlcq_category": "MLCQ: Off-By-One & Boundary Index Debt",
+    "severity": "major",
+    "function_name": "compute_percentile",
+    "description": "Return the nearest-rank percentile value from a list of latencies in ms. Returns 0.0 for empty input. For p=0 returns min(latencies); for p=100 returns max(latencies).",
+    "clean_code": "import math\n\ndef compute_percentile(latencies: list[float], percentile: float) -> float:\n    if not latencies:\n        return 0.0\n    ordered = sorted(latencies)\n    if percentile <= 0:\n        return float(ordered[0])\n    if percentile >= 100:\n        return float(ordered[-1])\n    rank = math.ceil((percentile / 100.0) * len(ordered)) - 1\n    rank = max(0, min(rank, len(ordered) - 1))\n    return float(ordered[rank])\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Median (p50) of 5 latencies",
+        "call_expr": "compute_percentile([50.0, 10.0, 30.0, 20.0, 40.0], 50)",
+        "expected_output": 30.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "p80 of 5 latencies",
+        "call_expr": "compute_percentile([10.0, 20.0, 30.0, 40.0, 50.0], 80)",
+        "expected_output": 40.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "p100 upper bound latency",
+        "call_expr": "compute_percentile([12.0, 45.0, 19.0], 100)",
+        "expected_output": 45.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: p0 minimum latency boundary",
+        "call_expr": "compute_percentile([15.0, 25.0, 35.0], 0)",
+        "expected_output": 15.0,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Empty latency list returns 0.0",
+        "call_expr": "compute_percentile([], 95)",
+        "expected_output": 0.0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M002_SUBTLE_P0",
+        "defect_type": "off_by_one_boundary",
+        "strategy_name": "Strict inequality on zero percentile",
+        "targeted_edge_case": "Zero-th percentile boundary (T4)",
+        "mutated_code": "import math\n\ndef compute_percentile(latencies: list[float], percentile: float) -> float:\n    if not latencies:\n        return 0.0\n    ordered = sorted(latencies)\n    if percentile <= 0:\n        return float(ordered[1]) if len(ordered) > 1 else float(ordered[0])\n    if percentile >= 100:\n        return float(ordered[-1])\n    rank = math.ceil((percentile / 100.0) * len(ordered)) - 1\n    rank = max(0, min(rank, len(ordered) - 1))\n    return float(ordered[rank])\n",
+        "explanation": "Off-by-one index `ordered[1]` when `percentile <= 0`, breaking only T4 (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M002_SUBTLE_EMPTY_AND_P0",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Wrong empty default and p0 guard",
+        "targeted_edge_case": "Empty list and p0 boundary (T4, T5)",
+        "mutated_code": "import math\n\ndef compute_percentile(latencies: list[float], percentile: float) -> float:\n    if not latencies:\n        return -1.0\n    ordered = sorted(latencies)\n    if percentile <= 0:\n        return 0.0\n    if percentile >= 100:\n        return float(ordered[-1])\n    rank = math.ceil((percentile / 100.0) * len(ordered)) - 1\n    rank = max(0, min(rank, len(ordered) - 1))\n    return float(ordered[rank])\n",
+        "explanation": "Returns -1.0 on empty list and 0.0 on p<=0, breaking exactly T4 and T5 (2/5 broken).",
+        "expected_broken_count": 2
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-003",
+    "title": "Sliding Window API Rate Limiter",
+    "mlcq_category": "MLCQ: Boundary Condition & Timestamp Comparison Debt",
+    "severity": "major",
+    "function_name": "count_allowed_requests",
+    "description": "Given sorted request timestamps (seconds), a window_size, and max_requests allowed in [t - window_size + 1, t] inclusive, return how many requests are allowed.",
+    "clean_code": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    for t in timestamps:\n        cutoff = t - window_size + 1\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            allowed_delta = 1\n        else:\n            allowed_delta = 0\n        if 'total' not in locals():\n            total = 0\n        total += allowed_delta\n    return total\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Well-spaced requests all allowed",
+        "call_expr": "count_allowed_requests([1, 5, 10, 15], 3, 2)",
+        "expected_output": 4,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "Burst exceeding capacity within window",
+        "call_expr": "count_allowed_requests([1, 1, 1, 2, 10], 5, 2)",
+        "expected_output": 3,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Single request allowed",
+        "call_expr": "count_allowed_requests([42], 10, 1)",
+        "expected_output": 1,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Exact window expiration boundary (t - window_size + 1)",
+        "call_expr": "count_allowed_requests([1, 2, 4], 3, 2)",
+        "expected_output": 3,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Zero capacity or empty timestamps",
+        "call_expr": "count_allowed_requests([1, 2, 3], 5, 0)",
+        "expected_output": 0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M003_SUBTLE_BOUNDARY",
+        "defect_type": "off_by_one_boundary",
+        "strategy_name": "Off-by-one window cutoff calculation",
+        "targeted_edge_case": "Exact window boundary expiration (T4)",
+        "mutated_code": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    total = 0\n    for t in timestamps:\n        cutoff = t - window_size\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            total += 1\n    return total\n",
+        "explanation": "Uses `cutoff = t - window_size` instead of `t - window_size + 1`, so only exact boundary test T4 fails (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M003_SUBTLE_TWO",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Missing zero-capacity guard + boundary shift",
+        "targeted_edge_case": "Exact window boundary and zero capacity (T4, T5)",
+        "mutated_code": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or window_size <= 0:\n        return 0\n    if max_requests <= 0:\n        return 1\n    accepted: list[int] = []\n    total = 0\n    for t in timestamps:\n        cutoff = t - window_size\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            total += 1\n    return total\n",
+        "explanation": "Breaks exact window boundary T4 and zero-capacity guard T5 (2/5 broken).",
+        "expected_broken_count": 2
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-004",
+    "title": "Tiered Invoice Discount & Precision Aggregator",
+    "mlcq_category": "MLCQ: Numeric Precision & Threshold Boundary Debt",
+    "severity": "major",
+    "function_name": "calculate_net_invoice",
+    "description": "Sum positive item prices (ignoring <= 0 refund markers), apply 10% discount if subtotal >= 100.0, and round to 2 decimal places.",
+    "clean_code": "def calculate_net_invoice(prices: list[float]) -> float:\n    if not prices:\n        return 0.0\n    subtotal = sum(p for p in prices if p > 0)\n    if subtotal >= 100.0:\n        subtotal *= 0.9\n    return round(subtotal, 2)\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Standard order below discount threshold",
+        "call_expr": "calculate_net_invoice([25.0, 30.5, 14.5])",
+        "expected_output": 70.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "Large order well above 100.0 threshold",
+        "call_expr": "calculate_net_invoice([60.0, 80.0, 60.0])",
+        "expected_output": 180.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Empty cart returns 0.0",
+        "call_expr": "calculate_net_invoice([])",
+        "expected_output": 0.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Exact 100.0 threshold receives 10% discount",
+        "call_expr": "calculate_net_invoice([40.0, 60.0])",
+        "expected_output": 90.0,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Negative refund markers ignored & precision rounded to 2 decimals",
+        "call_expr": "calculate_net_invoice([33.333, -10.0, 33.333])",
+        "expected_output": 66.67,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M004_SUBTLE_THRESHOLD",
+        "defect_type": "off_by_one_boundary",
+        "strategy_name": "Strict inequality on discount threshold",
+        "targeted_edge_case": "Exact 100.0 subtotal threshold (T4)",
+        "mutated_code": "def calculate_net_invoice(prices: list[float]) -> float:\n    if not prices:\n        return 0.0\n    subtotal = sum(p for p in prices if p > 0)\n    if subtotal > 100.0:\n        subtotal *= 0.9\n    return round(subtotal, 2)\n",
+        "explanation": "Changes `subtotal >= 100.0` to `subtotal > 100.0`, breaking only T4 (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M004_SUBTLE_PRECISION_NEG",
+        "defect_type": "precision_or_rounding_debt",
+        "strategy_name": "Single-decimal rounding truncation",
+        "targeted_edge_case": "Two-decimal rounding precision (T5)",
+        "mutated_code": "def calculate_net_invoice(prices: list[float]) -> float:\n    if not prices:\n        return 0.0\n    subtotal = sum(p for p in prices if p > 0)\n    if subtotal >= 100.0:\n        subtotal *= 0.9\n    return round(subtotal, 1)\n",
+        "explanation": "Rounds to 1 decimal place instead of 2, breaking only T5 where 66.666 rounds to 66.7 instead of 66.67 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-005",
+    "title": "Run-Length Telemetry Stream Compressor",
+    "mlcq_category": "MLCQ: Loop State & Final Flush Debt",
+    "severity": "major",
+    "function_name": "compress_runs",
+    "description": "Compress consecutive identical strings into (value, count) tuples. Returns [] for empty list.",
+    "clean_code": "def compress_runs(events: list[str]) -> list[tuple[str, int]]:\n    if not events:\n        return []\n    result: list[tuple[str, int]] = []\n    curr_val = events[0]\n    curr_count = 1\n    for item in events[1:]:\n        if item == curr_val:\n            curr_count += 1\n        else:\n            result.append((curr_val, curr_count))\n            curr_val = item\n            curr_count = 1\n    result.append((curr_val, curr_count))\n    return result\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Multi-run event sequence",
+        "call_expr": "compress_runs(['OK', 'OK', 'ERR', 'OK'])",
+        "expected_output": [["OK", 2], ["ERR", 1], ["OK", 1]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "Alternating distinct events",
+        "call_expr": "compress_runs(['A', 'B', 'C'])",
+        "expected_output": [["A", 1], ["B", 1], ["C", 1]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Single uniform run of 4 events",
+        "call_expr": "compress_runs(['WARN', 'WARN', 'WARN', 'WARN'])",
+        "expected_output": [["WARN", 4]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Single element list",
+        "call_expr": "compress_runs(['PING'])",
+        "expected_output": [["PING", 1]],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Empty event stream",
+        "call_expr": "compress_runs([])",
+        "expected_output": [],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M005_SUBTLE_SINGLETON",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Singleton early exit omission",
+        "targeted_edge_case": "Single element input (T4)",
+        "mutated_code": "def compress_runs(events: list[str]) -> list[tuple[str, int]]:\n    if len(events) <= 1:\n        return []\n    result: list[tuple[str, int]] = []\n    curr_val = events[0]\n    curr_count = 1\n    for item in events[1:]:\n        if item == curr_val:\n            curr_count += 1\n        else:\n            result.append((curr_val, curr_count))\n            curr_val = item\n            curr_count = 1\n    result.append((curr_val, curr_count))\n    return result\n",
+        "explanation": "Uses `if len(events) <= 1: return []`, so T1, T2, T3, T5 pass and only singleton T4 fails (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M005_SUBTLE_UNIFORM",
+        "defect_type": "state_accumulation_debt",
+        "strategy_name": "Conditional final flush only when result non-empty",
+        "targeted_edge_case": "Single uniform run and singleton (T3, T4)",
+        "mutated_code": "def compress_runs(events: list[str]) -> list[tuple[str, int]]:\n    if not events:\n        return []\n    result: list[tuple[str, int]] = []\n    curr_val = events[0]\n    curr_count = 1\n    for item in events[1:]:\n        if item == curr_val:\n            curr_count += 1\n        else:\n            result.append((curr_val, curr_count))\n            curr_val = item\n            curr_count = 1\n    if result:\n        result.append((curr_val, curr_count))\n    return result\n",
+        "explanation": "Only appends final run if `result` already has prior runs, breaking T3 and T4 while T1, T2, T5 pass (2/5 broken).",
+        "expected_broken_count": 2
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-006",
+    "title": "Top-K Anomaly Score Selector with Deterministic Tie-Breaking",
+    "mlcq_category": "MLCQ: Sorting & Tie-Breaker Ordering Debt",
+    "severity": "major",
+    "function_name": "select_top_anomalies",
+    "description": "Given (service_id, score) pairs and k, return the top k service_ids ordered by score descending, and by service_id ascending on ties.",
+    "clean_code": "def select_top_anomalies(records: list[tuple[str, int]], k: int) -> list[str]:\n    if not records or k <= 0:\n        return []\n    ordered = sorted(records, key=lambda item: (-item[1], item[0]))\n    return [svc for svc, _ in ordered[:k]]\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Distinct positive anomaly scores",
+        "call_expr": "select_top_anomalies([('auth', 50), ('db', 90), ('cache', 70)], 2)",
+        "expected_output": ["db", "cache"],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "k larger than record count",
+        "call_expr": "select_top_anomalies([('api', 10), ('web', 20)], 5)",
+        "expected_output": ["web", "api"],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Empty records or k=0 returns empty list",
+        "call_expr": "select_top_anomalies([('auth', 50)], 0)",
+        "expected_output": [],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Tie-breaking by service_id ascending when scores are equal",
+        "call_expr": "select_top_anomalies([('zeta', 80), ('alpha', 80), ('beta', 60)], 2)",
+        "expected_output": ["alpha", "zeta"],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Negative anomaly baseline scores",
+        "call_expr": "select_top_anomalies([('svc_b', -5), ('svc_a', -1), ('svc_c', -10)], 2)",
+        "expected_output": ["svc_a", "svc_b"],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M006_SUBTLE_TIE",
+        "defect_type": "tie_breaker_or_duplicate_debt",
+        "strategy_name": "Reverse tie-breaker sort direction",
+        "targeted_edge_case": "Equal score tie-breaking (T4)",
+        "mutated_code": "def select_top_anomalies(records: list[tuple[str, int]], k: int) -> list[str]:\n    if not records or k <= 0:\n        return []\n    ordered = sorted(records, key=lambda item: (item[1], item[0]), reverse=True)\n    return [svc for svc, _ in ordered[:k]]\n",
+        "explanation": "Sorting with `reverse=True` on `(score, name)` sorts names descending on ties, breaking only T4 (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M006_SUBTLE_NEG_SCORE",
+        "defect_type": "negative_or_zero_edge_debt",
+        "strategy_name": "Absolute value score sorting debt",
+        "targeted_edge_case": "Negative anomaly scores (T5)",
+        "mutated_code": "def select_top_anomalies(records: list[tuple[str, int]], k: int) -> list[str]:\n    if not records or k <= 0:\n        return []\n    ordered = sorted(records, key=lambda item: (-abs(item[1]), item[0]))\n    return [svc for svc, _ in ordered[:k]]\n",
+        "explanation": "Uses `-abs(item[1])`, so positive scores pass (T1-T4) and only negative scores in T5 fail (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-007",
+    "title": "Semantic Version Compatibility Comparator",
+    "mlcq_category": "MLCQ: Parsing & Component Padding Debt",
+    "severity": "major",
+    "function_name": "compare_semver",
+    "description": "Compare two version strings 'major.minor.patch' (missing parts default to 0, e.g. '1.2' == '1.2.0'). Return 1 if v1 > v2, -1 if v1 < v2, and 0 if equal.",
+    "clean_code": "def compare_semver(v1: str, v2: str) -> int:\n    p1 = [int(x) for x in v1.strip().split('.') if x != '']\n    p2 = [int(x) for x in v2.strip().split('.') if x != '']\n    while len(p1) < 3:\n        p1.append(0)\n    while len(p2) < 3:\n        p2.append(0)\n    if p1[:3] > p2[:3]:\n        return 1\n    if p1[:3] < p2[:3]:\n        return -1\n    return 0\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Major version difference",
+        "call_expr": "compare_semver('2.1.0', '1.9.9')",
+        "expected_output": 1,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "Minor/patch lower version",
+        "call_expr": "compare_semver('1.4.2', '1.5.0')",
+        "expected_output": -1,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Identical full semver strings",
+        "call_expr": "compare_semver('3.0.1', '3.0.1')",
+        "expected_output": 0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Multi-digit numeric segment ('1.10.0' vs '1.2.0')",
+        "call_expr": "compare_semver('1.10.0', '1.2.0')",
+        "expected_output": 1,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Omitted trailing patch segment ('1.2' == '1.2.0')",
+        "call_expr": "compare_semver('1.2', '1.2.0')",
+        "expected_output": 0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M007_SUBTLE_PADDING",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Missing zero-padding for short version strings",
+        "targeted_edge_case": "Short version string '1.2' vs '1.2.0' (T5)",
+        "mutated_code": "def compare_semver(v1: str, v2: str) -> int:\n    p1 = [int(x) for x in v1.strip().split('.') if x != '']\n    p2 = [int(x) for x in v2.strip().split('.') if x != '']\n    if p1 > p2:\n        return 1\n    if p1 < p2:\n        return -1\n    return 0\n",
+        "explanation": "Omits zero-padding to length 3, so `[1, 2] < [1, 2, 0]` returns -1 instead of 0 on T5 while T1-T4 pass (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M007_SUBTLE_LEXICOGRAPHIC",
+        "defect_type": "precision_or_rounding_debt",
+        "strategy_name": "Lexicographic string comparison instead of integer comparison",
+        "targeted_edge_case": "Multi-digit version segment '1.10.0' vs '1.2.0' (T4)",
+        "mutated_code": "def compare_semver(v1: str, v2: str) -> int:\n    p1 = [x for x in v1.strip().split('.') if x != '']\n    p2 = [x for x in v2.strip().split('.') if x != '']\n    while len(p1) < 3:\n        p1.append('0')\n    while len(p2) < 3:\n        p2.append('0')\n    if p1[:3] > p2[:3]:\n        return 1\n    if p1[:3] < p2[:3]:\n        return -1\n    return 0\n",
+        "explanation": "Compares version segments as strings ('10' < '2'), breaking only T4 while T1, T2, T3, T5 pass (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "MLCQ-TD-008",
+    "title": "FIFO Inventory Batch Fulfillment Allocator",
+    "mlcq_category": "MLCQ: State Accumulation & Partial Fulfillment Debt",
+    "severity": "major",
+    "function_name": "allocate_fifo_inventory",
+    "description": "Given batch quantities and an order quantity, fulfill from batches in FIFO order and return remaining batch quantities. If total stock < order_qty, return the original batches unchanged.",
+    "clean_code": "def allocate_fifo_inventory(batches: list[int], order_qty: int) -> list[int]:\n    if order_qty <= 0 or not batches:\n        return list(batches)\n    if sum(batches) < order_qty:\n        return list(batches)\n    remaining_order = order_qty\n    updated: list[int] = []\n    for qty in batches:\n        if remaining_order <= 0:\n            updated.append(qty)\n        elif qty >= remaining_order:\n            updated.append(qty - remaining_order)\n            remaining_order = 0\n        else:\n            updated.append(0)\n            remaining_order -= qty\n    return updated\n",
+    "test_cases": [
+      {
+        "test_id": "T1",
+        "description": "Fulfill across first two batches",
+        "call_expr": "allocate_fifo_inventory([10, 20, 30], 15)",
+        "expected_output": [0, 15, 30],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T2",
+        "description": "Fulfill within first batch only",
+        "call_expr": "allocate_fifo_inventory([25, 10], 10)",
+        "expected_output": [15, 10],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T3",
+        "description": "Zero order leaves batches untouched",
+        "call_expr": "allocate_fifo_inventory([5, 10], 0)",
+        "expected_output": [5, 10],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "T4",
+        "description": "Edge case: Exact full stock depletion (sum == order_qty)",
+        "call_expr": "allocate_fifo_inventory([10, 15, 5], 30)",
+        "expected_output": [0, 0, 0],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "T5",
+        "description": "Edge case: Insufficient stock rolls back and returns original batches",
+        "call_expr": "allocate_fifo_inventory([10, 10], 25)",
+        "expected_output": [10, 10],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "M008_SUBTLE_EXACT_STOCK",
+        "defect_type": "off_by_one_boundary",
+        "strategy_name": "Reject exact stock match as insufficient",
+        "targeted_edge_case": "Exact total stock depletion sum(batches) == order_qty (T4)",
+        "mutated_code": "def allocate_fifo_inventory(batches: list[int], order_qty: int) -> list[int]:\n    if order_qty <= 0 or not batches:\n        return list(batches)\n    if sum(batches) <= order_qty:\n        return list(batches)\n    remaining_order = order_qty\n    updated: list[int] = []\n    for qty in batches:\n        if remaining_order <= 0:\n            updated.append(qty)\n        elif qty >= remaining_order:\n            updated.append(qty - remaining_order)\n            remaining_order = 0\n        else:\n            updated.append(0)\n            remaining_order -= qty\n    return updated\n",
+        "explanation": "Uses `sum(batches) <= order_qty` instead of `< order_qty`, breaking only T4 (1/5 broken).",
+        "expected_broken_count": 1
+      },
+      {
+        "mutation_id": "M008_SUBTLE_ROLLBACK",
+        "defect_type": "state_accumulation_debt",
+        "strategy_name": "Missing rollback guard on insufficient stock",
+        "targeted_edge_case": "Insufficient stock rollback (T5)",
+        "mutated_code": "def allocate_fifo_inventory(batches: list[int], order_qty: int) -> list[int]:\n    if order_qty <= 0 or not batches:\n        return list(batches)\n    remaining_order = order_qty\n    updated: list[int] = []\n    for qty in batches:\n        if remaining_order <= 0:\n            updated.append(qty)\n        elif qty >= remaining_order:\n            updated.append(qty - remaining_order)\n            remaining_order = 0\n        else:\n            updated.append(0)\n            remaining_order -= qty\n    return updated\n",
+        "explanation": "Omits `if sum(batches) < order_qty: return list(batches)`, depleting stock to [0, 0] on T5 while T1-T4 pass (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  }
+]

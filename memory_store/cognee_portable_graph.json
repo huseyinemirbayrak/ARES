@@ -1,0 +1,1872 @@
+{
+  "schema_version": "ares-cognee-portable-1.0",
+  "exported_at": "2026-11-07T20:31:35.363867+00:00",
+  "summary": {
+    "total_nodes": 36,
+    "total_edges": 38,
+    "total_episodes": 25,
+    "learned_defect_types": [
+      "empty_or_singleton_debt",
+      "off_by_one_boundary",
+      "precision_or_rounding_debt",
+      "negative_or_zero_edge_debt",
+      "state_accumulation_debt",
+      "tie_breaker_or_duplicate_debt"
+    ],
+    "tracked_attack_strategies": 16
+  },
+  "nodes": {
+    "problem:MLCQ-TD-001": {
+      "node_id": "problem:MLCQ-TD-001",
+      "node_type": "CodeProblem",
+      "label": "Maximum Contiguous Telemetry Delta (Kadane Variant)",
+      "properties": {
+        "problem_id": "MLCQ-TD-001",
+        "function_name": "max_subarray_sum",
+        "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)"
+      },
+      "updated_at": "2026-11-07T20:31:35.242604+00:00"
+    },
+    "defect:empty_or_singleton_debt": {
+      "node_id": "defect:empty_or_singleton_debt",
+      "node_type": "DefectCategory",
+      "label": "empty_or_singleton_debt",
+      "properties": {
+        "defect_type": "empty_or_singleton_debt",
+        "targeted_edge_case": "Empty list and single element boundary (T3, T5)"
+      },
+      "updated_at": "2026-11-07T20:31:35.257514+00:00"
+    },
+    "strategy:f14ed9c289": {
+      "node_id": "strategy:f14ed9c289",
+      "node_type": "AttackStrategy",
+      "label": "Singleton negative/empty guard shift",
+      "properties": {
+        "problem_id": "MLCQ-TD-001",
+        "strategy_name": "Singleton negative/empty guard shift",
+        "defect_type": "empty_or_singleton_debt",
+        "uses": 3,
+        "valid_attacks": 3,
+        "attacker_wins": 1,
+        "caught_by_defender": 2,
+        "over_broken": 0,
+        "broken_test_count": 2,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:35.270054+00:00"
+    },
+    "repair:empty_or_singleton_debt": {
+      "node_id": "repair:empty_or_singleton_debt",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for empty_or_singleton_debt",
+      "properties": {
+        "defect_type": "empty_or_singleton_debt",
+        "encounters": 10,
+        "repairs_succeeded": 9,
+        "known_code_clues": [
+          "When ['T3', 'T5'] fail with 'Empty list and single element boundary (T3, T5)', classify as 'empty_or_singleton_debt' (Replaces `if not nums: return 0` with `if len(nums) <= 1: return -1`, breaking only T3 and T5 (2/5 broken).)",
+          "When ['T4', 'T5'] fail with 'Empty list and p0 boundary (T4, T5)', classify as 'empty_or_singleton_debt' (Returns -1.0 on empty list and 0.0 on p<=0, breaking exactly T4 and T5 (2/5 broken).)",
+          "When ['T4'] fail with 'Single element input (T4)', classify as 'empty_or_singleton_debt' (Uses `if len(events) <= 1: return []`, so T1, T2, T3, T5 pass and only singleton T4 fails (1/5 broken).)",
+          "When ['T5'] fail with 'Short version string '1.2' vs '1.2.0' (T5)', classify as 'empty_or_singleton_debt' (Omits zero-padding to length 3, so `[1, 2] < [1, 2, 0]` returns -1 instead of 0 on T5 while T1-T4 pass (1/5 broken).)",
+          "When ['T4', 'T5'] fail with 'Exact window boundary and zero capacity (T4, T5)', classify as 'empty_or_singleton_debt' (Breaks exact window boundary T4 and zero-capacity guard T5 (2/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:35.285155+00:00"
+    },
+    "problem:MLCQ-TD-002": {
+      "node_id": "problem:MLCQ-TD-002",
+      "node_type": "CodeProblem",
+      "label": "SLA Latency Nearest-Rank Percentile Calculator",
+      "properties": {
+        "problem_id": "MLCQ-TD-002",
+        "function_name": "compute_percentile",
+        "mlcq_category": "MLCQ: Off-By-One & Boundary Index Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.275743+00:00"
+    },
+    "strategy:4052ce6dcb": {
+      "node_id": "strategy:4052ce6dcb",
+      "node_type": "AttackStrategy",
+      "label": "Wrong empty default and p0 guard",
+      "properties": {
+        "problem_id": "MLCQ-TD-002",
+        "strategy_name": "Wrong empty default and p0 guard",
+        "defect_type": "empty_or_singleton_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 0,
+        "caught_by_defender": 2,
+        "over_broken": 0,
+        "broken_test_count": 2,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.300495+00:00"
+    },
+    "problem:MLCQ-TD-003": {
+      "node_id": "problem:MLCQ-TD-003",
+      "node_type": "CodeProblem",
+      "label": "Sliding Window API Rate Limiter",
+      "properties": {
+        "problem_id": "MLCQ-TD-003",
+        "function_name": "count_allowed_requests",
+        "mlcq_category": "MLCQ: Boundary Condition & Timestamp Comparison Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.405975+00:00"
+    },
+    "defect:off_by_one_boundary": {
+      "node_id": "defect:off_by_one_boundary",
+      "node_type": "DefectCategory",
+      "label": "off_by_one_boundary",
+      "properties": {
+        "defect_type": "off_by_one_boundary",
+        "targeted_edge_case": "Exact 100.0 subtotal threshold (T4)"
+      },
+      "updated_at": "2026-11-07T20:31:34.555550+00:00"
+    },
+    "strategy:76d082a179": {
+      "node_id": "strategy:76d082a179",
+      "node_type": "AttackStrategy",
+      "label": "Off-by-one window cutoff calculation",
+      "properties": {
+        "problem_id": "MLCQ-TD-003",
+        "strategy_name": "Off-by-one window cutoff calculation",
+        "defect_type": "off_by_one_boundary",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 1,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.416312+00:00"
+    },
+    "repair:off_by_one_boundary": {
+      "node_id": "repair:off_by_one_boundary",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for off_by_one_boundary",
+      "properties": {
+        "defect_type": "off_by_one_boundary",
+        "encounters": 5,
+        "repairs_succeeded": 4,
+        "known_code_clues": [
+          "When ['T4'] fail with 'Exact window boundary expiration (T4)', classify as 'off_by_one_boundary' (Uses `cutoff = t - window_size` instead of `t - window_size + 1`, so only exact boundary test T4 fails (1/5 broken).)",
+          "When ['T4'] fail with 'Zero-th percentile boundary (T4)', classify as 'off_by_one_boundary' (Off-by-one index `ordered[1]` when `percentile <= 0`, breaking only T4 (1/5 broken).)",
+          "When ['T4'] fail with 'Exact total stock depletion sum(batches) == order_qty (T4)', classify as 'off_by_one_boundary' (Uses `sum(batches) <= order_qty` instead of `< order_qty`, breaking only T4 (1/5 broken).)",
+          "When ['T4'] fail with 'Exact 100.0 subtotal threshold (T4)', classify as 'off_by_one_boundary' (Changes `subtotal >= 100.0` to `subtotal > 100.0`, breaking only T4 (1/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:34.582667+00:00"
+    },
+    "problem:MLCQ-TD-004": {
+      "node_id": "problem:MLCQ-TD-004",
+      "node_type": "CodeProblem",
+      "label": "Tiered Invoice Discount & Precision Aggregator",
+      "properties": {
+        "problem_id": "MLCQ-TD-004",
+        "function_name": "calculate_net_invoice",
+        "mlcq_category": "MLCQ: Numeric Precision & Threshold Boundary Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.542732+00:00"
+    },
+    "defect:precision_or_rounding_debt": {
+      "node_id": "defect:precision_or_rounding_debt",
+      "node_type": "DefectCategory",
+      "label": "precision_or_rounding_debt",
+      "properties": {
+        "defect_type": "precision_or_rounding_debt",
+        "targeted_edge_case": "Multi-digit version segment '1.10.0' vs '1.2.0' (T4)"
+      },
+      "updated_at": "2026-11-07T20:31:33.863692+00:00"
+    },
+    "strategy:d20deb2299": {
+      "node_id": "strategy:d20deb2299",
+      "node_type": "AttackStrategy",
+      "label": "Single-decimal rounding truncation",
+      "properties": {
+        "problem_id": "MLCQ-TD-004",
+        "strategy_name": "Single-decimal rounding truncation",
+        "defect_type": "precision_or_rounding_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 1,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.530480+00:00"
+    },
+    "repair:precision_or_rounding_debt": {
+      "node_id": "repair:precision_or_rounding_debt",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for precision_or_rounding_debt",
+      "properties": {
+        "defect_type": "precision_or_rounding_debt",
+        "encounters": 3,
+        "repairs_succeeded": 2,
+        "known_code_clues": [
+          "When ['T5'] fail with 'Two-decimal rounding precision (T5)', classify as 'precision_or_rounding_debt' (Rounds to 1 decimal place instead of 2, breaking only T5 where 66.666 rounds to 66.7 instead of 66.67 (1/5 broken).)",
+          "When ['T4'] fail with 'Multi-digit version segment '1.10.0' vs '1.2.0' (T4)', classify as 'precision_or_rounding_debt' (Compares version segments as strings ('10' < '2'), breaking only T4 while T1, T2, T3, T5 pass (1/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:33.888973+00:00"
+    },
+    "problem:MLCQ-TD-005": {
+      "node_id": "problem:MLCQ-TD-005",
+      "node_type": "CodeProblem",
+      "label": "Run-Length Telemetry Stream Compressor",
+      "properties": {
+        "problem_id": "MLCQ-TD-005",
+        "function_name": "compress_runs",
+        "mlcq_category": "MLCQ: Loop State & Final Flush Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.722482+00:00"
+    },
+    "strategy:75df8e2bce": {
+      "node_id": "strategy:75df8e2bce",
+      "node_type": "AttackStrategy",
+      "label": "Singleton early exit omission",
+      "properties": {
+        "problem_id": "MLCQ-TD-005",
+        "strategy_name": "Singleton early exit omission",
+        "defect_type": "empty_or_singleton_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 0,
+        "caught_by_defender": 2,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.758784+00:00"
+    },
+    "problem:MLCQ-TD-006": {
+      "node_id": "problem:MLCQ-TD-006",
+      "node_type": "CodeProblem",
+      "label": "Top-K Anomaly Score Selector with Deterministic Tie-Breaking",
+      "properties": {
+        "problem_id": "MLCQ-TD-006",
+        "function_name": "select_top_anomalies",
+        "mlcq_category": "MLCQ: Sorting & Tie-Breaker Ordering Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.855647+00:00"
+    },
+    "defect:negative_or_zero_edge_debt": {
+      "node_id": "defect:negative_or_zero_edge_debt",
+      "node_type": "DefectCategory",
+      "label": "negative_or_zero_edge_debt",
+      "properties": {
+        "defect_type": "negative_or_zero_edge_debt",
+        "targeted_edge_case": "All-negative array input (T4)"
+      },
+      "updated_at": "2026-11-07T20:31:34.155410+00:00"
+    },
+    "strategy:d5234bceae": {
+      "node_id": "strategy:d5234bceae",
+      "node_type": "AttackStrategy",
+      "label": "Absolute value score sorting debt",
+      "properties": {
+        "problem_id": "MLCQ-TD-006",
+        "strategy_name": "Absolute value score sorting debt",
+        "defect_type": "negative_or_zero_edge_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 1,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.753415+00:00"
+    },
+    "repair:negative_or_zero_edge_debt": {
+      "node_id": "repair:negative_or_zero_edge_debt",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for negative_or_zero_edge_debt",
+      "properties": {
+        "defect_type": "negative_or_zero_edge_debt",
+        "encounters": 3,
+        "repairs_succeeded": 2,
+        "known_code_clues": [
+          "When ['T5'] fail with 'Negative anomaly scores (T5)', classify as 'negative_or_zero_edge_debt' (Uses `-abs(item[1])`, so positive scores pass (T1-T4) and only negative scores in T5 fail (1/5 broken).)",
+          "When ['T4'] fail with 'All-negative array input (T4)', classify as 'negative_or_zero_edge_debt' (Initializes `best = max(0, nums[0])` instead of `nums[0]`, so T1, T2, T3, T5 pass (4/5), and only T4 fails (1/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:34.189947+00:00"
+    },
+    "problem:MLCQ-TD-007": {
+      "node_id": "problem:MLCQ-TD-007",
+      "node_type": "CodeProblem",
+      "label": "Semantic Version Compatibility Comparator",
+      "properties": {
+        "problem_id": "MLCQ-TD-007",
+        "function_name": "compare_semver",
+        "mlcq_category": "MLCQ: Parsing & Component Padding Debt"
+      },
+      "updated_at": "2026-11-07T20:31:34.984241+00:00"
+    },
+    "strategy:b56bfd23b3": {
+      "node_id": "strategy:b56bfd23b3",
+      "node_type": "AttackStrategy",
+      "label": "Missing zero-padding for short version strings",
+      "properties": {
+        "problem_id": "MLCQ-TD-007",
+        "strategy_name": "Missing zero-padding for short version strings",
+        "defect_type": "empty_or_singleton_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 0,
+        "caught_by_defender": 2,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:35.010798+00:00"
+    },
+    "problem:MLCQ-TD-008": {
+      "node_id": "problem:MLCQ-TD-008",
+      "node_type": "CodeProblem",
+      "label": "FIFO Inventory Batch Fulfillment Allocator",
+      "properties": {
+        "problem_id": "MLCQ-TD-008",
+        "function_name": "allocate_fifo_inventory",
+        "mlcq_category": "MLCQ: State Accumulation & Partial Fulfillment Debt"
+      },
+      "updated_at": "2026-11-07T20:31:35.115419+00:00"
+    },
+    "defect:state_accumulation_debt": {
+      "node_id": "defect:state_accumulation_debt",
+      "node_type": "DefectCategory",
+      "label": "state_accumulation_debt",
+      "properties": {
+        "defect_type": "state_accumulation_debt",
+        "targeted_edge_case": "Insufficient stock rollback (T5)"
+      },
+      "updated_at": "2026-11-07T20:31:35.128274+00:00"
+    },
+    "strategy:d4a01305b4": {
+      "node_id": "strategy:d4a01305b4",
+      "node_type": "AttackStrategy",
+      "label": "Missing rollback guard on insufficient stock",
+      "properties": {
+        "problem_id": "MLCQ-TD-008",
+        "strategy_name": "Missing rollback guard on insufficient stock",
+        "defect_type": "state_accumulation_debt",
+        "uses": 2,
+        "valid_attacks": 2,
+        "attacker_wins": 0,
+        "caught_by_defender": 2,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:35.140635+00:00"
+    },
+    "repair:state_accumulation_debt": {
+      "node_id": "repair:state_accumulation_debt",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for state_accumulation_debt",
+      "properties": {
+        "defect_type": "state_accumulation_debt",
+        "encounters": 3,
+        "repairs_succeeded": 3,
+        "known_code_clues": [
+          "When ['T5'] fail with 'Insufficient stock rollback (T5)', classify as 'state_accumulation_debt' (Omits `if sum(batches) < order_qty: return list(batches)`, depleting stock to [0, 0] on T5 while T1-T4 pass (1/5 broken).)",
+          "When ['T3', 'T4'] fail with 'Single uniform run and singleton (T3, T4)', classify as 'state_accumulation_debt' (Only appends final run if `result` already has prior runs, breaking T3 and T4 while T1, T2, T5 pass (2/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:35.154000+00:00"
+    },
+    "strategy:0827a3355f": {
+      "node_id": "strategy:0827a3355f",
+      "node_type": "AttackStrategy",
+      "label": "Strict inequality on zero percentile",
+      "properties": {
+        "problem_id": "MLCQ-TD-002",
+        "strategy_name": "Strict inequality on zero percentile",
+        "defect_type": "off_by_one_boundary",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.260742+00:00"
+    },
+    "strategy:c1b8df39fe": {
+      "node_id": "strategy:c1b8df39fe",
+      "node_type": "AttackStrategy",
+      "label": "Conditional final flush only when result non-empty",
+      "properties": {
+        "problem_id": "MLCQ-TD-005",
+        "strategy_name": "Conditional final flush only when result non-empty",
+        "defect_type": "state_accumulation_debt",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 2,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.637337+00:00"
+    },
+    "strategy:3e92356cff": {
+      "node_id": "strategy:3e92356cff",
+      "node_type": "AttackStrategy",
+      "label": "Lexicographic string comparison instead of integer comparison",
+      "properties": {
+        "problem_id": "MLCQ-TD-007",
+        "strategy_name": "Lexicographic string comparison instead of integer comparison",
+        "defect_type": "precision_or_rounding_debt",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:33.875622+00:00"
+    },
+    "strategy:21d9f63c12": {
+      "node_id": "strategy:21d9f63c12",
+      "node_type": "AttackStrategy",
+      "label": "Reject exact stock match as insufficient",
+      "properties": {
+        "problem_id": "MLCQ-TD-008",
+        "strategy_name": "Reject exact stock match as insufficient",
+        "defect_type": "off_by_one_boundary",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.025337+00:00"
+    },
+    "strategy:f3ea245fac": {
+      "node_id": "strategy:f3ea245fac",
+      "node_type": "AttackStrategy",
+      "label": "Zero-floored accumulator initialization debt",
+      "properties": {
+        "problem_id": "MLCQ-TD-001",
+        "strategy_name": "Zero-floored accumulator initialization debt",
+        "defect_type": "negative_or_zero_edge_debt",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.169280+00:00"
+    },
+    "strategy:891bb18d04": {
+      "node_id": "strategy:891bb18d04",
+      "node_type": "AttackStrategy",
+      "label": "Missing zero-capacity guard + boundary shift",
+      "properties": {
+        "problem_id": "MLCQ-TD-003",
+        "strategy_name": "Missing zero-capacity guard + boundary shift",
+        "defect_type": "empty_or_singleton_debt",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 2,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.434423+00:00"
+    },
+    "strategy:c8170de422": {
+      "node_id": "strategy:c8170de422",
+      "node_type": "AttackStrategy",
+      "label": "Strict inequality on discount threshold",
+      "properties": {
+        "problem_id": "MLCQ-TD-004",
+        "strategy_name": "Strict inequality on discount threshold",
+        "defect_type": "off_by_one_boundary",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.569823+00:00"
+    },
+    "defect:tie_breaker_or_duplicate_debt": {
+      "node_id": "defect:tie_breaker_or_duplicate_debt",
+      "node_type": "DefectCategory",
+      "label": "tie_breaker_or_duplicate_debt",
+      "properties": {
+        "defect_type": "tie_breaker_or_duplicate_debt",
+        "targeted_edge_case": "Equal score tie-breaking (T4)"
+      },
+      "updated_at": "2026-11-07T20:31:34.870129+00:00"
+    },
+    "strategy:2ee9e46fdb": {
+      "node_id": "strategy:2ee9e46fdb",
+      "node_type": "AttackStrategy",
+      "label": "Reverse tie-breaker sort direction",
+      "properties": {
+        "problem_id": "MLCQ-TD-006",
+        "strategy_name": "Reverse tie-breaker sort direction",
+        "defect_type": "tie_breaker_or_duplicate_debt",
+        "uses": 1,
+        "valid_attacks": 1,
+        "attacker_wins": 0,
+        "caught_by_defender": 1,
+        "over_broken": 0,
+        "broken_test_count": 1,
+        "last_reward": 0.25
+      },
+      "updated_at": "2026-11-07T20:31:34.884390+00:00"
+    },
+    "repair:tie_breaker_or_duplicate_debt": {
+      "node_id": "repair:tie_breaker_or_duplicate_debt",
+      "node_type": "DefenderRepairKnowledge",
+      "label": "Repair rule for tie_breaker_or_duplicate_debt",
+      "properties": {
+        "defect_type": "tie_breaker_or_duplicate_debt",
+        "encounters": 1,
+        "repairs_succeeded": 1,
+        "known_code_clues": [
+          "When ['T4'] fail with 'Equal score tie-breaking (T4)', classify as 'tie_breaker_or_duplicate_debt' (Sorting with `reverse=True` on `(score, name)` sorts names descending on ties, breaking only T4 (1/5 broken).)"
+        ]
+      },
+      "updated_at": "2026-11-07T20:31:34.897717+00:00"
+    }
+  },
+  "edges": [
+    {
+      "edge_id": "016d066fe6c4be8b",
+      "source_id": "strategy:0827a3355f",
+      "target_id": "problem:MLCQ-TD-002",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 10,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "05fc15f65b0bf9ce",
+      "source_id": "strategy:0827a3355f",
+      "target_id": "defect:off_by_one_boundary",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "be22c5ee021b6070",
+      "source_id": "strategy:76d082a179",
+      "target_id": "problem:MLCQ-TD-003",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 11,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "2a22e0f6f9cfdcfd",
+      "source_id": "strategy:76d082a179",
+      "target_id": "defect:off_by_one_boundary",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "b5cd31de29e46bce",
+      "source_id": "strategy:d20deb2299",
+      "target_id": "problem:MLCQ-TD-004",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 12,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "3298db04b0dd504e",
+      "source_id": "strategy:d20deb2299",
+      "target_id": "defect:precision_or_rounding_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "c2ce28c7d9e6f84b",
+      "source_id": "strategy:c1b8df39fe",
+      "target_id": "problem:MLCQ-TD-005",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 13,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "a99d27656c1cf4d9",
+      "source_id": "strategy:c1b8df39fe",
+      "target_id": "defect:state_accumulation_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T3",
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "c3598c1a856c4a51",
+      "source_id": "strategy:d5234bceae",
+      "target_id": "problem:MLCQ-TD-006",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 14,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "8a11dba5973ed9f9",
+      "source_id": "strategy:d5234bceae",
+      "target_id": "defect:negative_or_zero_edge_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "6e8ff3fdeb5426bd",
+      "source_id": "strategy:3e92356cff",
+      "target_id": "problem:MLCQ-TD-007",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 15,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "2b10a48cbc5167db",
+      "source_id": "strategy:3e92356cff",
+      "target_id": "defect:precision_or_rounding_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "29e9e257484dbfb6",
+      "source_id": "repair:precision_or_rounding_debt",
+      "target_id": "defect:precision_or_rounding_debt",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    },
+    {
+      "edge_id": "74af1757a476192c",
+      "source_id": "strategy:21d9f63c12",
+      "target_id": "problem:MLCQ-TD-008",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 16,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "67d397d208c36f85",
+      "source_id": "strategy:21d9f63c12",
+      "target_id": "defect:off_by_one_boundary",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "0df4a33a6b1d2677",
+      "source_id": "strategy:f3ea245fac",
+      "target_id": "problem:MLCQ-TD-001",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 17,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "14d527e525126883",
+      "source_id": "strategy:f3ea245fac",
+      "target_id": "defect:negative_or_zero_edge_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "288f5775b61dfae6",
+      "source_id": "repair:negative_or_zero_edge_debt",
+      "target_id": "defect:negative_or_zero_edge_debt",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    },
+    {
+      "edge_id": "1f45c2e059722218",
+      "source_id": "strategy:4052ce6dcb",
+      "target_id": "problem:MLCQ-TD-002",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 18,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "9e261c3ac8b296bf",
+      "source_id": "strategy:4052ce6dcb",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4",
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "a2e475d4e4dfe424",
+      "source_id": "strategy:891bb18d04",
+      "target_id": "problem:MLCQ-TD-003",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 19,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "f3f05383144caf8a",
+      "source_id": "strategy:891bb18d04",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4",
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "612a575c51e00778",
+      "source_id": "strategy:c8170de422",
+      "target_id": "problem:MLCQ-TD-004",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 20,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "c76ee09ba5cb5c32",
+      "source_id": "strategy:c8170de422",
+      "target_id": "defect:off_by_one_boundary",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "d6c6ca0622c3e18f",
+      "source_id": "repair:off_by_one_boundary",
+      "target_id": "defect:off_by_one_boundary",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    },
+    {
+      "edge_id": "7bee015cdd2f9120",
+      "source_id": "strategy:75df8e2bce",
+      "target_id": "problem:MLCQ-TD-005",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 21,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "ff78d39553b69bb1",
+      "source_id": "strategy:75df8e2bce",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "f6f84aedcc3e10c3",
+      "source_id": "strategy:2ee9e46fdb",
+      "target_id": "problem:MLCQ-TD-006",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 22,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "8266c228e0adcdf6",
+      "source_id": "strategy:2ee9e46fdb",
+      "target_id": "defect:tie_breaker_or_duplicate_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T4"
+        ]
+      }
+    },
+    {
+      "edge_id": "a52a521fdd2346c2",
+      "source_id": "repair:tie_breaker_or_duplicate_debt",
+      "target_id": "defect:tie_breaker_or_duplicate_debt",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    },
+    {
+      "edge_id": "6d6be4abb66bf4eb",
+      "source_id": "strategy:b56bfd23b3",
+      "target_id": "problem:MLCQ-TD-007",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 23,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "8a184c1663ade085",
+      "source_id": "strategy:b56bfd23b3",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "cd2d914700e56830",
+      "source_id": "strategy:d4a01305b4",
+      "target_id": "problem:MLCQ-TD-008",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 24,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "f404ba65dcf81087",
+      "source_id": "strategy:d4a01305b4",
+      "target_id": "defect:state_accumulation_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "c45cfe28c56b70df",
+      "source_id": "repair:state_accumulation_debt",
+      "target_id": "defect:state_accumulation_debt",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    },
+    {
+      "edge_id": "454d4330453c7cb7",
+      "source_id": "strategy:f14ed9c289",
+      "target_id": "problem:MLCQ-TD-001",
+      "relation": "APPLIED_TO_PROBLEM",
+      "weight": 0.25,
+      "metadata": {
+        "turn_id": 25,
+        "validity": "valid_subtle_attack"
+      }
+    },
+    {
+      "edge_id": "f3115241772c7296",
+      "source_id": "strategy:f14ed9c289",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "INJECTS_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "broken_tests": [
+          "T3",
+          "T5"
+        ]
+      }
+    },
+    {
+      "edge_id": "5014a650583f27ae",
+      "source_id": "repair:empty_or_singleton_debt",
+      "target_id": "defect:empty_or_singleton_debt",
+      "relation": "MITIGATES_DEFECT",
+      "weight": 1.0,
+      "metadata": {
+        "repaired_all": true
+      }
+    }
+  ],
+  "attacker_strategy_stats": {
+    "MLCQ-TD-001::Singleton negative/empty guard shift": {
+      "problem_id": "MLCQ-TD-001",
+      "strategy_name": "Singleton negative/empty guard shift",
+      "defect_type": "empty_or_singleton_debt",
+      "uses": 3,
+      "valid_attacks": 3,
+      "attacker_wins": 1,
+      "caught_by_defender": 2,
+      "over_broken": 0,
+      "broken_test_count": 2,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-002::Wrong empty default and p0 guard": {
+      "problem_id": "MLCQ-TD-002",
+      "strategy_name": "Wrong empty default and p0 guard",
+      "defect_type": "empty_or_singleton_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 0,
+      "caught_by_defender": 2,
+      "over_broken": 0,
+      "broken_test_count": 2,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-003::Off-by-one window cutoff calculation": {
+      "problem_id": "MLCQ-TD-003",
+      "strategy_name": "Off-by-one window cutoff calculation",
+      "defect_type": "off_by_one_boundary",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 1,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-004::Single-decimal rounding truncation": {
+      "problem_id": "MLCQ-TD-004",
+      "strategy_name": "Single-decimal rounding truncation",
+      "defect_type": "precision_or_rounding_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 1,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-005::Singleton early exit omission": {
+      "problem_id": "MLCQ-TD-005",
+      "strategy_name": "Singleton early exit omission",
+      "defect_type": "empty_or_singleton_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 0,
+      "caught_by_defender": 2,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-006::Absolute value score sorting debt": {
+      "problem_id": "MLCQ-TD-006",
+      "strategy_name": "Absolute value score sorting debt",
+      "defect_type": "negative_or_zero_edge_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 1,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-007::Missing zero-padding for short version strings": {
+      "problem_id": "MLCQ-TD-007",
+      "strategy_name": "Missing zero-padding for short version strings",
+      "defect_type": "empty_or_singleton_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 0,
+      "caught_by_defender": 2,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-008::Missing rollback guard on insufficient stock": {
+      "problem_id": "MLCQ-TD-008",
+      "strategy_name": "Missing rollback guard on insufficient stock",
+      "defect_type": "state_accumulation_debt",
+      "uses": 2,
+      "valid_attacks": 2,
+      "attacker_wins": 0,
+      "caught_by_defender": 2,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-002::Strict inequality on zero percentile": {
+      "problem_id": "MLCQ-TD-002",
+      "strategy_name": "Strict inequality on zero percentile",
+      "defect_type": "off_by_one_boundary",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-005::Conditional final flush only when result non-empty": {
+      "problem_id": "MLCQ-TD-005",
+      "strategy_name": "Conditional final flush only when result non-empty",
+      "defect_type": "state_accumulation_debt",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 2,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-007::Lexicographic string comparison instead of integer comparison": {
+      "problem_id": "MLCQ-TD-007",
+      "strategy_name": "Lexicographic string comparison instead of integer comparison",
+      "defect_type": "precision_or_rounding_debt",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-008::Reject exact stock match as insufficient": {
+      "problem_id": "MLCQ-TD-008",
+      "strategy_name": "Reject exact stock match as insufficient",
+      "defect_type": "off_by_one_boundary",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-001::Zero-floored accumulator initialization debt": {
+      "problem_id": "MLCQ-TD-001",
+      "strategy_name": "Zero-floored accumulator initialization debt",
+      "defect_type": "negative_or_zero_edge_debt",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-003::Missing zero-capacity guard + boundary shift": {
+      "problem_id": "MLCQ-TD-003",
+      "strategy_name": "Missing zero-capacity guard + boundary shift",
+      "defect_type": "empty_or_singleton_debt",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 2,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-004::Strict inequality on discount threshold": {
+      "problem_id": "MLCQ-TD-004",
+      "strategy_name": "Strict inequality on discount threshold",
+      "defect_type": "off_by_one_boundary",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    },
+    "MLCQ-TD-006::Reverse tie-breaker sort direction": {
+      "problem_id": "MLCQ-TD-006",
+      "strategy_name": "Reverse tie-breaker sort direction",
+      "defect_type": "tie_breaker_or_duplicate_debt",
+      "uses": 1,
+      "valid_attacks": 1,
+      "attacker_wins": 0,
+      "caught_by_defender": 1,
+      "over_broken": 0,
+      "broken_test_count": 1,
+      "last_reward": 0.25
+    }
+  },
+  "defender_repair_knowledge": {
+    "empty_or_singleton_debt": {
+      "defect_type": "empty_or_singleton_debt",
+      "encounters": 10,
+      "repairs_succeeded": 9,
+      "classifications_succeeded": 9,
+      "known_code_clues": [
+        "When ['T3', 'T5'] fail with 'Empty list and single element boundary (T3, T5)', classify as 'empty_or_singleton_debt' (Replaces `if not nums: return 0` with `if len(nums) <= 1: return -1`, breaking only T3 and T5 (2/5 broken).)",
+        "When ['T4', 'T5'] fail with 'Empty list and p0 boundary (T4, T5)', classify as 'empty_or_singleton_debt' (Returns -1.0 on empty list and 0.0 on p<=0, breaking exactly T4 and T5 (2/5 broken).)",
+        "When ['T4'] fail with 'Single element input (T4)', classify as 'empty_or_singleton_debt' (Uses `if len(events) <= 1: return []`, so T1, T2, T3, T5 pass and only singleton T4 fails (1/5 broken).)",
+        "When ['T5'] fail with 'Short version string '1.2' vs '1.2.0' (T5)', classify as 'empty_or_singleton_debt' (Omits zero-padding to length 3, so `[1, 2] < [1, 2, 0]` returns -1 instead of 0 on T5 while T1-T4 pass (1/5 broken).)",
+        "When ['T4', 'T5'] fail with 'Exact window boundary and zero capacity (T4, T5)', classify as 'empty_or_singleton_debt' (Breaks exact window boundary T4 and zero-capacity guard T5 (2/5 broken).)"
+      ],
+      "verified_repairs": {
+        "max_subarray_sum": "def max_subarray_sum(nums: list[int]) -> int:\n    if not nums:\n        return 0\n    best = nums[0]\n    curr = nums[0]\n    for x in nums[1:]:\n        curr = max(x, curr + x)\n        best = max(best, curr)\n    return best\n",
+        "compute_percentile": "import math\n\ndef compute_percentile(latencies: list[float], percentile: float) -> float:\n    if not latencies:\n        return 0.0\n    ordered = sorted(latencies)\n    if percentile <= 0:\n        return float(ordered[0])\n    if percentile >= 100:\n        return float(ordered[-1])\n    rank = math.ceil((percentile / 100.0) * len(ordered)) - 1\n    rank = max(0, min(rank, len(ordered) - 1))\n    return float(ordered[rank])\n",
+        "compress_runs": "def compress_runs(events: list[str]) -> list[tuple[str, int]]:\n    if not events:\n        return []\n    result: list[tuple[str, int]] = []\n    curr_val = events[0]\n    curr_count = 1\n    for item in events[1:]:\n        if item == curr_val:\n            curr_count += 1\n        else:\n            result.append((curr_val, curr_count))\n            curr_val = item\n            curr_count = 1\n    result.append((curr_val, curr_count))\n    return result\n",
+        "compare_semver": "def compare_semver(v1: str, v2: str) -> int:\n    p1 = [int(x) for x in v1.strip().split('.') if x != '']\n    p2 = [int(x) for x in v2.strip().split('.') if x != '']\n    while len(p1) < 3:\n        p1.append(0)\n    while len(p2) < 3:\n        p2.append(0)\n    if p1[:3] > p2[:3]:\n        return 1\n    if p1[:3] < p2[:3]:\n        return -1\n    return 0\n",
+        "count_allowed_requests": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    for t in timestamps:\n        cutoff = t - window_size + 1\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            allowed_delta = 1\n        else:\n            allowed_delta = 0\n        if 'total' not in locals():\n            total = 0\n        total += allowed_delta\n    return total\n"
+      }
+    },
+    "off_by_one_boundary": {
+      "defect_type": "off_by_one_boundary",
+      "encounters": 5,
+      "repairs_succeeded": 4,
+      "classifications_succeeded": 5,
+      "known_code_clues": [
+        "When ['T4'] fail with 'Exact window boundary expiration (T4)', classify as 'off_by_one_boundary' (Uses `cutoff = t - window_size` instead of `t - window_size + 1`, so only exact boundary test T4 fails (1/5 broken).)",
+        "When ['T4'] fail with 'Zero-th percentile boundary (T4)', classify as 'off_by_one_boundary' (Off-by-one index `ordered[1]` when `percentile <= 0`, breaking only T4 (1/5 broken).)",
+        "When ['T4'] fail with 'Exact total stock depletion sum(batches) == order_qty (T4)', classify as 'off_by_one_boundary' (Uses `sum(batches) <= order_qty` instead of `< order_qty`, breaking only T4 (1/5 broken).)",
+        "When ['T4'] fail with 'Exact 100.0 subtotal threshold (T4)', classify as 'off_by_one_boundary' (Changes `subtotal >= 100.0` to `subtotal > 100.0`, breaking only T4 (1/5 broken).)"
+      ],
+      "verified_repairs": {
+        "count_allowed_requests": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    for t in timestamps:\n        cutoff = t - window_size + 1\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            allowed_delta = 1\n        else:\n            allowed_delta = 0\n        if 'total' not in locals():\n            total = 0\n        total += allowed_delta\n    return total\n",
+        "compute_percentile": "import math\n\ndef compute_percentile(latencies: list[float], percentile: float) -> float:\n    if not latencies:\n        return 0.0\n    ordered = sorted(latencies)\n    if percentile <= 0:\n        return float(ordered[0])\n    if percentile >= 100:\n        return float(ordered[-1])\n    rank = math.ceil((percentile / 100.0) * len(ordered)) - 1\n    rank = max(0, min(rank, len(ordered) - 1))\n    return float(ordered[rank])\n",
+        "allocate_fifo_inventory": "def allocate_fifo_inventory(batches: list[int], order_qty: int) -> list[int]:\n    if order_qty <= 0 or not batches:\n        return list(batches)\n    if sum(batches) < order_qty:\n        return list(batches)\n    remaining_order = order_qty\n    updated: list[int] = []\n    for qty in batches:\n        if remaining_order <= 0:\n            updated.append(qty)\n        elif qty >= remaining_order:\n            updated.append(qty - remaining_order)\n            remaining_order = 0\n        else:\n            updated.append(0)\n            remaining_order -= qty\n    return updated\n",
+        "calculate_net_invoice": "def calculate_net_invoice(prices: list[float]) -> float:\n    if not prices:\n        return 0.0\n    subtotal = sum(p for p in prices if p > 0)\n    if subtotal >= 100.0:\n        subtotal *= 0.9\n    return round(subtotal, 2)\n"
+      }
+    },
+    "precision_or_rounding_debt": {
+      "defect_type": "precision_or_rounding_debt",
+      "encounters": 3,
+      "repairs_succeeded": 2,
+      "classifications_succeeded": 3,
+      "known_code_clues": [
+        "When ['T5'] fail with 'Two-decimal rounding precision (T5)', classify as 'precision_or_rounding_debt' (Rounds to 1 decimal place instead of 2, breaking only T5 where 66.666 rounds to 66.7 instead of 66.67 (1/5 broken).)",
+        "When ['T4'] fail with 'Multi-digit version segment '1.10.0' vs '1.2.0' (T4)', classify as 'precision_or_rounding_debt' (Compares version segments as strings ('10' < '2'), breaking only T4 while T1, T2, T3, T5 pass (1/5 broken).)"
+      ],
+      "verified_repairs": {
+        "calculate_net_invoice": "def calculate_net_invoice(prices: list[float]) -> float:\n    if not prices:\n        return 0.0\n    subtotal = sum(p for p in prices if p > 0)\n    if subtotal >= 100.0:\n        subtotal *= 0.9\n    return round(subtotal, 2)\n",
+        "compare_semver": "def compare_semver(v1: str, v2: str) -> int:\n    p1 = [int(x) for x in v1.strip().split('.') if x != '']\n    p2 = [int(x) for x in v2.strip().split('.') if x != '']\n    while len(p1) < 3:\n        p1.append(0)\n    while len(p2) < 3:\n        p2.append(0)\n    if p1[:3] > p2[:3]:\n        return 1\n    if p1[:3] < p2[:3]:\n        return -1\n    return 0\n"
+      }
+    },
+    "negative_or_zero_edge_debt": {
+      "defect_type": "negative_or_zero_edge_debt",
+      "encounters": 3,
+      "repairs_succeeded": 2,
+      "classifications_succeeded": 3,
+      "known_code_clues": [
+        "When ['T5'] fail with 'Negative anomaly scores (T5)', classify as 'negative_or_zero_edge_debt' (Uses `-abs(item[1])`, so positive scores pass (T1-T4) and only negative scores in T5 fail (1/5 broken).)",
+        "When ['T4'] fail with 'All-negative array input (T4)', classify as 'negative_or_zero_edge_debt' (Initializes `best = max(0, nums[0])` instead of `nums[0]`, so T1, T2, T3, T5 pass (4/5), and only T4 fails (1/5 broken).)"
+      ],
+      "verified_repairs": {
+        "select_top_anomalies": "def select_top_anomalies(records: list[tuple[str, int]], k: int) -> list[str]:\n    if not records or k <= 0:\n        return []\n    ordered = sorted(records, key=lambda item: (-item[1], item[0]))\n    return [svc for svc, _ in ordered[:k]]\n",
+        "max_subarray_sum": "def max_subarray_sum(nums: list[int]) -> int:\n    if not nums:\n        return 0\n    best = nums[0]\n    curr = nums[0]\n    for x in nums[1:]:\n        curr = max(x, curr + x)\n        best = max(best, curr)\n    return best\n"
+      }
+    },
+    "state_accumulation_debt": {
+      "defect_type": "state_accumulation_debt",
+      "encounters": 3,
+      "repairs_succeeded": 3,
+      "classifications_succeeded": 3,
+      "known_code_clues": [
+        "When ['T5'] fail with 'Insufficient stock rollback (T5)', classify as 'state_accumulation_debt' (Omits `if sum(batches) < order_qty: return list(batches)`, depleting stock to [0, 0] on T5 while T1-T4 pass (1/5 broken).)",
+        "When ['T3', 'T4'] fail with 'Single uniform run and singleton (T3, T4)', classify as 'state_accumulation_debt' (Only appends final run if `result` already has prior runs, breaking T3 and T4 while T1, T2, T5 pass (2/5 broken).)"
+      ],
+      "verified_repairs": {
+        "allocate_fifo_inventory": "def allocate_fifo_inventory(batches: list[int], order_qty: int) -> list[int]:\n    if order_qty <= 0 or not batches:\n        return list(batches)\n    if sum(batches) < order_qty:\n        return list(batches)\n    remaining_order = order_qty\n    updated: list[int] = []\n    for qty in batches:\n        if remaining_order <= 0:\n            updated.append(qty)\n        elif qty >= remaining_order:\n            updated.append(qty - remaining_order)\n            remaining_order = 0\n        else:\n            updated.append(0)\n            remaining_order -= qty\n    return updated\n",
+        "compress_runs": "def compress_runs(events: list[str]) -> list[tuple[str, int]]:\n    if not events:\n        return []\n    result: list[tuple[str, int]] = []\n    curr_val = events[0]\n    curr_count = 1\n    for item in events[1:]:\n        if item == curr_val:\n            curr_count += 1\n        else:\n            result.append((curr_val, curr_count))\n            curr_val = item\n            curr_count = 1\n    result.append((curr_val, curr_count))\n    return result\n"
+      }
+    },
+    "tie_breaker_or_duplicate_debt": {
+      "defect_type": "tie_breaker_or_duplicate_debt",
+      "encounters": 1,
+      "repairs_succeeded": 1,
+      "classifications_succeeded": 1,
+      "known_code_clues": [
+        "When ['T4'] fail with 'Equal score tie-breaking (T4)', classify as 'tie_breaker_or_duplicate_debt' (Sorting with `reverse=True` on `(score, name)` sorts names descending on ties, breaking only T4 (1/5 broken).)"
+      ],
+      "verified_repairs": {
+        "select_top_anomalies": "def select_top_anomalies(records: list[tuple[str, int]], k: int) -> list[str]:\n    if not records or k <= 0:\n        return []\n    ordered = sorted(records, key=lambda item: (-item[1], item[0]))\n    return [svc for svc, _ in ordered[:k]]\n"
+      }
+    }
+  },
+  "attacker_in_context": [
+    "Turn 20 (MLCQ-TD-004): Strategy='Strict inequality on discount threshold' [off_by_one_boundary] -> broke 1/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Strict inequality on discount threshold' (off_by_one_boundary) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on calculate_net_invoice.",
+    "Turn 21 (MLCQ-TD-005): Strategy='Singleton early exit omission' [empty_or_singleton_debt] -> broke 1/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Singleton early exit omission' (empty_or_singleton_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compress_runs.",
+    "Turn 22 (MLCQ-TD-006): Strategy='Reverse tie-breaker sort direction' [tie_breaker_or_duplicate_debt] -> broke 1/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Reverse tie-breaker sort direction' (tie_breaker_or_duplicate_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on select_top_anomalies.",
+    "Turn 23 (MLCQ-TD-007): Strategy='Missing zero-padding for short version strings' [empty_or_singleton_debt] -> broke 1/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Missing zero-padding for short version strings' (empty_or_singleton_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compare_semver.",
+    "Turn 24 (MLCQ-TD-008): Strategy='Missing rollback guard on insufficient stock' [state_accumulation_debt] -> broke 1/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Missing rollback guard on insufficient stock' (state_accumulation_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on allocate_fifo_inventory.",
+    "Turn 25 (MLCQ-TD-001): Strategy='Singleton negative/empty guard shift' [empty_or_singleton_debt] -> broke 2/5 tests, validity=valid_subtle_attack, winner=defender, reward=0.25. Feedback: [VALID ATTACK CAUGHT] Your mutation 'Singleton negative/empty guard shift' (empty_or_singleton_debt) broke 2/5 tests (['T3', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on max_subarray_sum."
+  ],
+  "defender_in_context": [
+    "Turn 20 (MLCQ-TD-004): Attacker injected 'off_by_one_boundary' breaking ['T4']. Your prediction='off_by_one_boundary', repaired_all=True, reward=1.0. Lesson: Changes `subtotal >= 100.0` to `subtotal > 100.0`, breaking only T4 (1/5 broken).",
+    "Turn 21 (MLCQ-TD-005): Attacker injected 'empty_or_singleton_debt' breaking ['T4']. Your prediction='empty_or_singleton_debt', repaired_all=True, reward=1.0. Lesson: Uses `if len(events) <= 1: return []`, so T1, T2, T3, T5 pass and only singleton T4 fails (1/5 broken).",
+    "Turn 22 (MLCQ-TD-006): Attacker injected 'tie_breaker_or_duplicate_debt' breaking ['T4']. Your prediction='tie_breaker_or_duplicate_debt', repaired_all=True, reward=1.0. Lesson: Sorting with `reverse=True` on `(score, name)` sorts names descending on ties, breaking only T4 (1/5 broken).",
+    "Turn 23 (MLCQ-TD-007): Attacker injected 'empty_or_singleton_debt' breaking ['T5']. Your prediction='empty_or_singleton_debt', repaired_all=True, reward=1.0. Lesson: Omits zero-padding to length 3, so `[1, 2] < [1, 2, 0]` returns -1 instead of 0 on T5 while T1-T4 pass (1/5 broken).",
+    "Turn 24 (MLCQ-TD-008): Attacker injected 'state_accumulation_debt' breaking ['T5']. Your prediction='state_accumulation_debt', repaired_all=True, reward=1.0. Lesson: Omits `if sum(batches) < order_qty: return list(batches)`, depleting stock to [0, 0] on T5 while T1-T4 pass (1/5 broken).",
+    "Turn 25 (MLCQ-TD-001): Attacker injected 'empty_or_singleton_debt' breaking ['T3', 'T5']. Your prediction='empty_or_singleton_debt', repaired_all=True, reward=1.0. Lesson: Replaces `if not nums: return 0` with `if len(nums) <= 1: return -1`, breaking only T3 and T5 (2/5 broken)."
+  ],
+  "episodes": [
+    {
+      "episode_id": "ep_turn_0001_MLCQ-TD-001",
+      "turn_id": 1,
+      "problem_id": "MLCQ-TD-001",
+      "function_name": "max_subarray_sum",
+      "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Singleton negative/empty guard shift",
+      "targeted_edge_case": "Empty list and single element boundary (T3, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T3",
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": false,
+      "winner": "attacker",
+      "attacker_reward": 1.0,
+      "defender_reward": -0.3,
+      "attacker_feedback": "[ATTACK WIN] Surgical defect 'Singleton negative/empty guard shift' (empty_or_singleton_debt) broke 2/5 tests (['T3', 'T5']) and evaded Defender repair (Defender still failed ['T3', 'T5']).",
+      "defender_feedback": "[DEFENSE FAILED] Attacker injected 'empty_or_singleton_debt' breaking ['T3', 'T5']. Your repaired code still failed 2/5 tests (['T3', 'T5']). Root cause hint: Replaces `if not nums: return 0` with `if len(nums) <= 1: return -1`, breaking only T3 and T5 (2/5 broken).",
+      "created_at": "2026-11-07T20:31:32.106666+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0002_MLCQ-TD-002",
+      "turn_id": 2,
+      "problem_id": "MLCQ-TD-002",
+      "function_name": "compute_percentile",
+      "mlcq_category": "MLCQ: Off-By-One & Boundary Index Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Wrong empty default and p0 guard",
+      "targeted_edge_case": "Empty list and p0 boundary (T4, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4",
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Wrong empty default and p0 guard' (empty_or_singleton_debt) broke 2/5 tests (['T4', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compute_percentile.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4', 'T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:32.220503+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0003_MLCQ-TD-003",
+      "turn_id": 3,
+      "problem_id": "MLCQ-TD-003",
+      "function_name": "count_allowed_requests",
+      "mlcq_category": "MLCQ: Boundary Condition & Timestamp Comparison Debt",
+      "injected_defect_type": "off_by_one_boundary",
+      "attack_strategy": "Off-by-one window cutoff calculation",
+      "targeted_edge_case": "Exact window boundary expiration (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": true,
+      "defense_repaired_all_tests": false,
+      "winner": "attacker",
+      "attacker_reward": 1.0,
+      "defender_reward": -0.3,
+      "attacker_feedback": "[ATTACK WIN] Surgical defect 'Off-by-one window cutoff calculation' (off_by_one_boundary) broke 1/5 tests (['T4']) and evaded Defender repair (Defender still failed ['T4']).",
+      "defender_feedback": "[DEFENSE FAILED] Attacker injected 'off_by_one_boundary' breaking ['T4']. Your repaired code still failed 1/5 tests (['T4']). Root cause hint: Uses `cutoff = t - window_size` instead of `t - window_size + 1`, so only exact boundary test T4 fails (1/5 broken).",
+      "created_at": "2026-11-07T20:31:32.344235+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0004_MLCQ-TD-004",
+      "turn_id": 4,
+      "problem_id": "MLCQ-TD-004",
+      "function_name": "calculate_net_invoice",
+      "mlcq_category": "MLCQ: Numeric Precision & Threshold Boundary Debt",
+      "injected_defect_type": "precision_or_rounding_debt",
+      "attack_strategy": "Single-decimal rounding truncation",
+      "targeted_edge_case": "Two-decimal rounding precision (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "precision_or_rounding_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": false,
+      "winner": "attacker",
+      "attacker_reward": 1.0,
+      "defender_reward": -0.3,
+      "attacker_feedback": "[ATTACK WIN] Surgical defect 'Single-decimal rounding truncation' (precision_or_rounding_debt) broke 1/5 tests (['T5']) and evaded Defender repair (Defender still failed ['T5']).",
+      "defender_feedback": "[DEFENSE FAILED] Attacker injected 'precision_or_rounding_debt' breaking ['T5']. Your repaired code still failed 1/5 tests (['T5']). Root cause hint: Rounds to 1 decimal place instead of 2, breaking only T5 where 66.666 rounds to 66.7 instead of 66.67 (1/5 broken).",
+      "created_at": "2026-11-07T20:31:32.470267+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0005_MLCQ-TD-005",
+      "turn_id": 5,
+      "problem_id": "MLCQ-TD-005",
+      "function_name": "compress_runs",
+      "mlcq_category": "MLCQ: Loop State & Final Flush Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Singleton early exit omission",
+      "targeted_edge_case": "Single element input (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Singleton early exit omission' (empty_or_singleton_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compress_runs.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:32.602399+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0006_MLCQ-TD-006",
+      "turn_id": 6,
+      "problem_id": "MLCQ-TD-006",
+      "function_name": "select_top_anomalies",
+      "mlcq_category": "MLCQ: Sorting & Tie-Breaker Ordering Debt",
+      "injected_defect_type": "negative_or_zero_edge_debt",
+      "attack_strategy": "Absolute value score sorting debt",
+      "targeted_edge_case": "Negative anomaly scores (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "negative_or_zero_edge_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": false,
+      "winner": "attacker",
+      "attacker_reward": 1.0,
+      "defender_reward": -0.3,
+      "attacker_feedback": "[ATTACK WIN] Surgical defect 'Absolute value score sorting debt' (negative_or_zero_edge_debt) broke 1/5 tests (['T5']) and evaded Defender repair (Defender still failed ['T5']).",
+      "defender_feedback": "[DEFENSE FAILED] Attacker injected 'negative_or_zero_edge_debt' breaking ['T5']. Your repaired code still failed 1/5 tests (['T5']). Root cause hint: Uses `-abs(item[1])`, so positive scores pass (T1-T4) and only negative scores in T5 fail (1/5 broken).",
+      "created_at": "2026-11-07T20:31:32.771528+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0007_MLCQ-TD-007",
+      "turn_id": 7,
+      "problem_id": "MLCQ-TD-007",
+      "function_name": "compare_semver",
+      "mlcq_category": "MLCQ: Parsing & Component Padding Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Missing zero-padding for short version strings",
+      "targeted_edge_case": "Short version string '1.2' vs '1.2.0' (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Missing zero-padding for short version strings' (empty_or_singleton_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compare_semver.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:32.882995+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0008_MLCQ-TD-008",
+      "turn_id": 8,
+      "problem_id": "MLCQ-TD-008",
+      "function_name": "allocate_fifo_inventory",
+      "mlcq_category": "MLCQ: State Accumulation & Partial Fulfillment Debt",
+      "injected_defect_type": "state_accumulation_debt",
+      "attack_strategy": "Missing rollback guard on insufficient stock",
+      "targeted_edge_case": "Insufficient stock rollback (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "state_accumulation_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Missing rollback guard on insufficient stock' (state_accumulation_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on allocate_fifo_inventory.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='state_accumulation_debt', actual='state_accumulation_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.011938+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0009_MLCQ-TD-001",
+      "turn_id": 9,
+      "problem_id": "MLCQ-TD-001",
+      "function_name": "max_subarray_sum",
+      "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Singleton negative/empty guard shift",
+      "targeted_edge_case": "Empty list and single element boundary (T3, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T3",
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Singleton negative/empty guard shift' (empty_or_singleton_debt) broke 2/5 tests (['T3', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on max_subarray_sum.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T3', 'T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.119364+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0010_MLCQ-TD-002",
+      "turn_id": 10,
+      "problem_id": "MLCQ-TD-002",
+      "function_name": "compute_percentile",
+      "mlcq_category": "MLCQ: Off-By-One & Boundary Index Debt",
+      "injected_defect_type": "off_by_one_boundary",
+      "attack_strategy": "Strict inequality on zero percentile",
+      "targeted_edge_case": "Zero-th percentile boundary (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Strict inequality on zero percentile' (off_by_one_boundary) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compute_percentile.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='off_by_one_boundary', actual='off_by_one_boundary' (match=True).",
+      "created_at": "2026-11-07T20:31:33.234626+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0011_MLCQ-TD-003",
+      "turn_id": 11,
+      "problem_id": "MLCQ-TD-003",
+      "function_name": "count_allowed_requests",
+      "mlcq_category": "MLCQ: Boundary Condition & Timestamp Comparison Debt",
+      "injected_defect_type": "off_by_one_boundary",
+      "attack_strategy": "Off-by-one window cutoff calculation",
+      "targeted_edge_case": "Exact window boundary expiration (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Off-by-one window cutoff calculation' (off_by_one_boundary) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on count_allowed_requests.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='off_by_one_boundary', actual='off_by_one_boundary' (match=True).",
+      "created_at": "2026-11-07T20:31:33.390996+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0012_MLCQ-TD-004",
+      "turn_id": 12,
+      "problem_id": "MLCQ-TD-004",
+      "function_name": "calculate_net_invoice",
+      "mlcq_category": "MLCQ: Numeric Precision & Threshold Boundary Debt",
+      "injected_defect_type": "precision_or_rounding_debt",
+      "attack_strategy": "Single-decimal rounding truncation",
+      "targeted_edge_case": "Two-decimal rounding precision (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "precision_or_rounding_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Single-decimal rounding truncation' (precision_or_rounding_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on calculate_net_invoice.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='precision_or_rounding_debt', actual='precision_or_rounding_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.507234+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0013_MLCQ-TD-005",
+      "turn_id": 13,
+      "problem_id": "MLCQ-TD-005",
+      "function_name": "compress_runs",
+      "mlcq_category": "MLCQ: Loop State & Final Flush Debt",
+      "injected_defect_type": "state_accumulation_debt",
+      "attack_strategy": "Conditional final flush only when result non-empty",
+      "targeted_edge_case": "Single uniform run and singleton (T3, T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T3",
+        "T4"
+      ],
+      "predicted_defect_type": "state_accumulation_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Conditional final flush only when result non-empty' (state_accumulation_debt) broke 2/5 tests (['T3', 'T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compress_runs.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T3', 'T4']). Defect classification: predicted='state_accumulation_debt', actual='state_accumulation_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.612525+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0014_MLCQ-TD-006",
+      "turn_id": 14,
+      "problem_id": "MLCQ-TD-006",
+      "function_name": "select_top_anomalies",
+      "mlcq_category": "MLCQ: Sorting & Tie-Breaker Ordering Debt",
+      "injected_defect_type": "negative_or_zero_edge_debt",
+      "attack_strategy": "Absolute value score sorting debt",
+      "targeted_edge_case": "Negative anomaly scores (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "negative_or_zero_edge_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Absolute value score sorting debt' (negative_or_zero_edge_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on select_top_anomalies.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='negative_or_zero_edge_debt', actual='negative_or_zero_edge_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.727580+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0015_MLCQ-TD-007",
+      "turn_id": 15,
+      "problem_id": "MLCQ-TD-007",
+      "function_name": "compare_semver",
+      "mlcq_category": "MLCQ: Parsing & Component Padding Debt",
+      "injected_defect_type": "precision_or_rounding_debt",
+      "attack_strategy": "Lexicographic string comparison instead of integer comparison",
+      "targeted_edge_case": "Multi-digit version segment '1.10.0' vs '1.2.0' (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "precision_or_rounding_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Lexicographic string comparison instead of integer comparison' (precision_or_rounding_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compare_semver.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='precision_or_rounding_debt', actual='precision_or_rounding_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:33.851519+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0016_MLCQ-TD-008",
+      "turn_id": 16,
+      "problem_id": "MLCQ-TD-008",
+      "function_name": "allocate_fifo_inventory",
+      "mlcq_category": "MLCQ: State Accumulation & Partial Fulfillment Debt",
+      "injected_defect_type": "off_by_one_boundary",
+      "attack_strategy": "Reject exact stock match as insufficient",
+      "targeted_edge_case": "Exact total stock depletion sum(batches) == order_qty (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Reject exact stock match as insufficient' (off_by_one_boundary) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on allocate_fifo_inventory.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='off_by_one_boundary', actual='off_by_one_boundary' (match=True).",
+      "created_at": "2026-11-07T20:31:34.000142+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0017_MLCQ-TD-001",
+      "turn_id": 17,
+      "problem_id": "MLCQ-TD-001",
+      "function_name": "max_subarray_sum",
+      "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)",
+      "injected_defect_type": "negative_or_zero_edge_debt",
+      "attack_strategy": "Zero-floored accumulator initialization debt",
+      "targeted_edge_case": "All-negative array input (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "negative_or_zero_edge_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Zero-floored accumulator initialization debt' (negative_or_zero_edge_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on max_subarray_sum.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='negative_or_zero_edge_debt', actual='negative_or_zero_edge_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:34.143423+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0018_MLCQ-TD-002",
+      "turn_id": 18,
+      "problem_id": "MLCQ-TD-002",
+      "function_name": "compute_percentile",
+      "mlcq_category": "MLCQ: Off-By-One & Boundary Index Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Wrong empty default and p0 guard",
+      "targeted_edge_case": "Empty list and p0 boundary (T4, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4",
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Wrong empty default and p0 guard' (empty_or_singleton_debt) broke 2/5 tests (['T4', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compute_percentile.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4', 'T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:34.275743+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0019_MLCQ-TD-003",
+      "turn_id": 19,
+      "problem_id": "MLCQ-TD-003",
+      "function_name": "count_allowed_requests",
+      "mlcq_category": "MLCQ: Boundary Condition & Timestamp Comparison Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Missing zero-capacity guard + boundary shift",
+      "targeted_edge_case": "Exact window boundary and zero capacity (T4, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4",
+        "T5"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": false,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 0.75,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Missing zero-capacity guard + boundary shift' (empty_or_singleton_debt) broke 2/5 tests (['T4', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on count_allowed_requests.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4', 'T5']). Defect classification: predicted='off_by_one_boundary', actual='empty_or_singleton_debt' (match=False).",
+      "created_at": "2026-11-07T20:31:34.404432+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0020_MLCQ-TD-004",
+      "turn_id": 20,
+      "problem_id": "MLCQ-TD-004",
+      "function_name": "calculate_net_invoice",
+      "mlcq_category": "MLCQ: Numeric Precision & Threshold Boundary Debt",
+      "injected_defect_type": "off_by_one_boundary",
+      "attack_strategy": "Strict inequality on discount threshold",
+      "targeted_edge_case": "Exact 100.0 subtotal threshold (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "off_by_one_boundary",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Strict inequality on discount threshold' (off_by_one_boundary) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on calculate_net_invoice.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='off_by_one_boundary', actual='off_by_one_boundary' (match=True).",
+      "created_at": "2026-11-07T20:31:34.542732+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0021_MLCQ-TD-005",
+      "turn_id": 21,
+      "problem_id": "MLCQ-TD-005",
+      "function_name": "compress_runs",
+      "mlcq_category": "MLCQ: Loop State & Final Flush Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Singleton early exit omission",
+      "targeted_edge_case": "Single element input (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Singleton early exit omission' (empty_or_singleton_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compress_runs.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:34.722482+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0022_MLCQ-TD-006",
+      "turn_id": 22,
+      "problem_id": "MLCQ-TD-006",
+      "function_name": "select_top_anomalies",
+      "mlcq_category": "MLCQ: Sorting & Tie-Breaker Ordering Debt",
+      "injected_defect_type": "tie_breaker_or_duplicate_debt",
+      "attack_strategy": "Reverse tie-breaker sort direction",
+      "targeted_edge_case": "Equal score tie-breaking (T4)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T4"
+      ],
+      "predicted_defect_type": "tie_breaker_or_duplicate_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Reverse tie-breaker sort direction' (tie_breaker_or_duplicate_debt) broke 1/5 tests (['T4']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on select_top_anomalies.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T4']). Defect classification: predicted='tie_breaker_or_duplicate_debt', actual='tie_breaker_or_duplicate_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:34.855647+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0023_MLCQ-TD-007",
+      "turn_id": 23,
+      "problem_id": "MLCQ-TD-007",
+      "function_name": "compare_semver",
+      "mlcq_category": "MLCQ: Parsing & Component Padding Debt",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Missing zero-padding for short version strings",
+      "targeted_edge_case": "Short version string '1.2' vs '1.2.0' (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Missing zero-padding for short version strings' (empty_or_singleton_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on compare_semver.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:34.984241+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0024_MLCQ-TD-008",
+      "turn_id": 24,
+      "problem_id": "MLCQ-TD-008",
+      "function_name": "allocate_fifo_inventory",
+      "mlcq_category": "MLCQ: State Accumulation & Partial Fulfillment Debt",
+      "injected_defect_type": "state_accumulation_debt",
+      "attack_strategy": "Missing rollback guard on insufficient stock",
+      "targeted_edge_case": "Insufficient stock rollback (T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T5"
+      ],
+      "predicted_defect_type": "state_accumulation_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Missing rollback guard on insufficient stock' (state_accumulation_debt) broke 1/5 tests (['T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on allocate_fifo_inventory.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T5']). Defect classification: predicted='state_accumulation_debt', actual='state_accumulation_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:35.115419+00:00"
+    },
+    {
+      "episode_id": "ep_turn_0025_MLCQ-TD-001",
+      "turn_id": 25,
+      "problem_id": "MLCQ-TD-001",
+      "function_name": "max_subarray_sum",
+      "mlcq_category": "MLCQ: Boundary & Initialization Debt (Blob/Complex Method)",
+      "injected_defect_type": "empty_or_singleton_debt",
+      "attack_strategy": "Singleton negative/empty guard shift",
+      "targeted_edge_case": "Empty list and single element boundary (T3, T5)",
+      "attack_validity": "valid_subtle_attack",
+      "broken_tests": [
+        "T3",
+        "T5"
+      ],
+      "predicted_defect_type": "empty_or_singleton_debt",
+      "classification_correct": true,
+      "defense_repaired_all_tests": true,
+      "winner": "defender",
+      "attacker_reward": 0.25,
+      "defender_reward": 1.0,
+      "attacker_feedback": "[VALID ATTACK CAUGHT] Your mutation 'Singleton negative/empty guard shift' (empty_or_singleton_debt) broke 2/5 tests (['T3', 'T5']), satisfying the 1-2 test rule, but Defender repaired all 5/5 tests. Try a less predictable defect category on max_subarray_sum.",
+      "defender_feedback": "[DEFENSE SUCCESS] You repaired all 5/5 test cases (resolved failing tests ['T3', 'T5']). Defect classification: predicted='empty_or_singleton_debt', actual='empty_or_singleton_debt' (match=True).",
+      "created_at": "2026-11-07T20:31:35.242604+00:00"
+    }
+  ]
+}

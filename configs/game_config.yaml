@@ -1,0 +1,67 @@
+project_name: "ARES: Adversarial Self-Play for Software Analysis"
+version: "0.1.0"
+
+self_play:
+  default_turns: 25
+  exam_interval: 25          # Run external benchmark exam every N turns (and at baseline turn 0)
+  run_baseline_exam: true
+  in_context_history_window: 6
+  elo_initial_rating: 1200.0
+  elo_k_factor: 32.0
+  blind_attacker: false      # Hide unit test cases from AttackerAgent prompt
+  blind_defender: false      # Hide failing test details from DefenderAgent prompt
+
+referee:
+  deterministic: true
+  min_broken_tests_for_valid_attack: 1
+  max_broken_tests_for_valid_attack: 2
+  expected_tests_per_problem: 5
+  execution_timeout_seconds: 3.0
+  rewards:
+    # Attacker rewards
+    valid_attack_evaded_defender: 1.0        # 1-2 tests broken AND Defender failed to repair all tests
+    valid_attack_caught_by_defender: 0.25    # 1-2 tests broken (valid subtle injection), but Defender repaired it
+    invalid_attack_no_tests_broken: -0.8     # 0 tests broken (attack had no effect)
+    invalid_attack_too_many_broken: -0.9     # >2 tests broken (attack was too obvious / destructive)
+    invalid_attack_syntax_error: -1.0        # Code failed to parse or timed out
+
+    # Defender rewards
+    defender_full_repair_and_classify: 1.0   # Repaired 100% of tests AND classified defect type accurately
+    defender_full_repair_only: 0.75          # Repaired 100% of tests, partial/different defect classification
+    defender_partial_repair: -0.3            # Improved pass rate but did not pass 100% of tests
+    defender_failed_repair: -0.8             # Failed to repair the broken tests
+    defender_clean_passthrough: 0.5          # Correctly preserved clean code when attacker failed to break tests
+
+memory:
+  framework: "cognee"
+  portable_store_dir: "memory_store"
+  portable_bundle_file: "memory_store/cognee_portable_graph.json"
+  top_k_memories: 4
+  enable_cognee_native_if_installed: true
+  auto_export_portable_snapshot: true
+
+llm:
+  # Supported modes: "auto", "ollama", "openai_compatible", "adaptive_local"
+  # "auto" checks if local Ollama / OpenAI endpoint is reachable, and seamlessly falls back to "adaptive_local"
+  mode: "auto"
+  attacker_model:
+    provider: "ollama"
+    model_name: "qwen2.5-coder:7b"
+    base_url: "http://localhost:11434"
+    temperature: 0.7
+  defender_model:
+    provider: "ollama"
+    model_name: "qwen2.5-coder:7b"
+    base_url: "http://localhost:11434"
+    temperature: 0.2
+
+datasets:
+  self_play_dataset_path: "ares/datasets/mlcq_technical_debt_suite.json"
+  external_exam_dataset_path: "ares/datasets/external_exam_benchmark.json"
+
+logging:
+  output_dir: "outputs"
+  turns_log_file: "outputs/self_play_turns.jsonl"
+  exam_log_file: "outputs/external_exams.json"
+  scoreboard_file: "outputs/scoreboard_summary.json"
+

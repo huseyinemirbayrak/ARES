@@ -1,0 +1,35 @@
+[project]
+name = "ares-self-play"
+version = "0.1.0"
+description = "ARES: Adversarial Self-Play for Software Analysis with LangGraph, Cognee Portable Memory, and Deterministic Referee"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.7.0",
+    "pyyaml>=6.0.1",
+    "httpx>=0.27.0",
+    "rich>=13.7.0",
+    "pytest>=8.0.0",
+]
+
+[project.optional-dependencies]
+cognee = [
+    "cognee>=0.1.0",
+]
+
+[project.scripts]
+ares = "ares.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ares"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+

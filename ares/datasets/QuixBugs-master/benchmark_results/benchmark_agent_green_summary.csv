@@ -1,0 +1,5 @@
+Framework,Memory_Type,Round_1_Acc,Final_Acc,Delta_Pct,Precision,Recall,F1_Score,Consensus_Rate,Avg_Latency_Sec
+LangGraph + Mem0,Episodic Experience,60.0,55.0,-5.0,0.6,0.3,0.4,85.0,28.12
+LangGraph + Cognee,AST Knowledge Graph,50.0,40.0,-10.0,0.4,0.4,0.4,65.0,121.53
+LangGraph + Zep,Temporal Fact Graph,60.0,55.0,-5.0,0.5714,0.4,0.4706,70.0,29.53
+LangGraph + Qdrant,Dense Vector (k-NN),60.0,60.0,0.0,1.0,0.2,0.3333,100.0,18.51

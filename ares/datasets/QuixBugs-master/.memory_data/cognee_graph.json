@@ -1,0 +1,72 @@
+{
+  "nodes": [
+    {
+      "node_id": "rule_bitcount_and",
+      "label": "Brian Kernighan Bit Clearing Rule",
+      "node_type": "AlgorithmInvariant",
+      "properties": {
+        "description": "Counting 1-bits requires turning off lowest set bit with n &= n - 1."
+      }
+    },
+    {
+      "node_id": "defect_bitcount_xor",
+      "label": "Bitwise XOR Infinite Loop",
+      "node_type": "DefectPattern",
+      "properties": {
+        "description": "Using n ^= n - 1 toggles bits instead of clearing, resulting in infinite loops."
+      }
+    },
+    {
+      "node_id": "rule_bfs_visited",
+      "label": "Graph Visited Set Invariant",
+      "node_type": "AlgorithmInvariant",
+      "properties": {
+        "description": "BFS traversals must add newly discovered adjacent nodes to visited set to avoid cycles."
+      }
+    },
+    {
+      "node_id": "defect_bfs_missing_visited",
+      "label": "Missing Visited Set Update",
+      "node_type": "DefectPattern",
+      "properties": {
+        "description": "Failing to add adjacent nodes to visited queue triggers infinite cyclic exploration."
+      }
+    },
+    {
+      "node_id": "rule_partition_strictness",
+      "label": "Partition Strictness Invariant",
+      "node_type": "AlgorithmInvariant",
+      "properties": {
+        "description": "Quicksort sublists must strictly partition elements smaller and larger than pivot."
+      }
+    },
+    {
+      "node_id": "defect_non_strict_partition",
+      "label": "Non-Strict Partition Defect",
+      "node_type": "DefectPattern",
+      "properties": {
+        "description": "Non-strict inequalities on both sides cause infinite recursion when duplicates exist."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "defect_bitcount_xor",
+      "target": "rule_bitcount_and",
+      "relationship": "VIOLATES_INVARIANT",
+      "weight": 1.0
+    },
+    {
+      "source": "defect_bfs_missing_visited",
+      "target": "rule_bfs_visited",
+      "relationship": "VIOLATES_INVARIANT",
+      "weight": 1.0
+    },
+    {
+      "source": "defect_non_strict_partition",
+      "target": "rule_partition_strictness",
+      "relationship": "VIOLATES_INVARIANT",
+      "weight": 1.0
+    }
+  ]
+}

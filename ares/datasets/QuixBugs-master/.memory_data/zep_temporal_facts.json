@@ -1,0 +1,163 @@
+[
+  {
+    "fact_id": "zep_fact_1",
+    "timestamp": "2025-01-01T10:00:00",
+    "algorithm": "bitcount",
+    "category": "bitwise",
+    "synthesized_fact": "Temporal Observation: Algorithms performing bit-twiddling loops must ensure monotone convergence towards zero. Using XOR prevents decrement and traps the processor."
+  },
+  {
+    "fact_id": "zep_fact_2",
+    "timestamp": "2025-01-02T11:00:00",
+    "algorithm": "breadth_first_search",
+    "category": "graph",
+    "synthesized_fact": "Temporal Observation: Queue-based graph explorations on cyclic graphs require instantaneous marking of neighbors in nodesvisited prior to queue enqueue to prevent duplicate processing."
+  },
+  {
+    "fact_id": "zep_fact_3",
+    "timestamp": "2025-01-03T12:00:00",
+    "algorithm": "general_sorting",
+    "category": "sorting",
+    "synthesized_fact": "Temporal Observation: Divide-and-conquer sorting routines with non-decreasing partitions fail when identical pivot elements are not partitioned into a separate bucket."
+  },
+  {
+    "fact_id": "zep_fact_4",
+    "timestamp": "2026-11-05T17:37:53.855587",
+    "algorithm": "ag_pjproject_None_199836",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_pjproject_None_199836: has_error=False. Defect: None. Explanation: The provided algorithm appears to be correctly implemented. It reads a character from the scanner, checks if it's a null"
+  },
+  {
+    "fact_id": "zep_fact_5",
+    "timestamp": "2026-11-05T17:38:13.368561",
+    "algorithm": "ag_linux_cancel_360829",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_linux_cancel_360829: has_error=False. Defect: None. Explanation: The provided code appears to be a function for canceling I/O operations in a Linux kernel module. It checks if the file "
+  },
+  {
+    "fact_id": "zep_fact_6",
+    "timestamp": "2026-11-05T17:38:43.817060",
+    "algorithm": "ag_drogon_None_197057",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_drogon_None_197057: has_error=False. Defect: None. Explanation: The provided code appears to be a C++ function that saves a file to a specified path, handling various edge cases such a"
+  },
+  {
+    "fact_id": "zep_fact_7",
+    "timestamp": "2026-11-05T17:39:06.158379",
+    "algorithm": "ag_php-src_mbfilter_big5_464942",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_php-src_mbfilter_big5_464942: has_error=True. Defect: Off-by-one Error. Explanation: The condition `c > c1 && c < 0xff` is incorrect because it excludes the value 0xff. The correct condition should be `c >"
+  },
+  {
+    "fact_id": "zep_fact_8",
+    "timestamp": "2026-11-05T17:39:31.618395",
+    "algorithm": "ag_pjproject_sdp_201007",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_pjproject_sdp_201007: has_error=False. Defect: None. Explanation: The provided code appears to be a C function for printing SDP (Session Description Protocol) media descriptions. It does"
+  },
+  {
+    "fact_id": "zep_fact_9",
+    "timestamp": "2026-11-05T17:39:59.117319",
+    "algorithm": "ag_tensorflow_optimized_ops_251946",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_tensorflow_optimized_ops_251946: has_error=False. Defect: None. Explanation: The provided code appears to be a well-structured and logically sound implementation of a fivefold nested loop for binar"
+  },
+  {
+    "fact_id": "zep_fact_10",
+    "timestamp": "2026-11-05T17:40:26.899530",
+    "algorithm": "ag_ImageMagick6_bmp_210692",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_ImageMagick6_bmp_210692: has_error=True. Defect: Detected Defect. Explanation: No detailed explanation."
+  },
+  {
+    "fact_id": "zep_fact_11",
+    "timestamp": "2026-11-05T17:40:58.267606",
+    "algorithm": "ag_cifs-utils_mount.cifs_444900",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_cifs-utils_mount.cifs_444900: has_error=True. Defect: Infinite Loop in Bitwise Update. Explanation: The function `toggle_dac_capability(1, 1)` is called with the same arguments (1, 1) twice. If this function is designed "
+  },
+  {
+    "fact_id": "zep_fact_12",
+    "timestamp": "2026-11-05T17:41:12.358460",
+    "algorithm": "ag_linux_fastrpc_200695",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_linux_fastrpc_200695: has_error=False. Defect: None. Explanation: The provided code does not contain any functional bugs, edge-case failures, infinite loops, or syntax errors."
+  },
+  {
+    "fact_id": "zep_fact_13",
+    "timestamp": "2026-11-05T17:41:27.430171",
+    "algorithm": "ag_gpac_box_code_base_226029",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_gpac_box_code_base_226029: has_error=False. Defect: None. Explanation: The provided code appears to be a function for deleting a box in a GPAC library. It checks for null pointers and frees a"
+  },
+  {
+    "fact_id": "zep_fact_14",
+    "timestamp": "2026-11-05T17:42:13.951707",
+    "algorithm": "ag_gpac_box_code_base_195409",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_gpac_box_code_base_195409: has_error=True. Defect: Memory Corruption. Explanation: The code does not check if `ptr->entries[i].name` is not NULL before freeing it. This can lead to undefined behavior if "
+  },
+  {
+    "fact_id": "zep_fact_15",
+    "timestamp": "2026-11-05T17:42:24.469962",
+    "algorithm": "ag_mongo_None_483469",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_mongo_None_483469: has_error=False. Defect: Detected Defect. Explanation: No detailed explanation."
+  },
+  {
+    "fact_id": "zep_fact_16",
+    "timestamp": "2026-11-05T17:43:04.484720",
+    "algorithm": "ag_tensorflow_sdca_internal_196790",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_tensorflow_sdca_internal_196790: has_error=False. Defect: None. Explanation: The provided Python code appears to be a TensorFlow OpKernel initialization function for a custom SDCA (Stochastic Dual "
+  },
+  {
+    "fact_id": "zep_fact_17",
+    "timestamp": "2026-11-05T17:43:22.159589",
+    "algorithm": "ag_linux_rtrs-clt_291761",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_linux_rtrs-clt_291761: has_error=False. Defect: None. Explanation: The provided code is a simple function to release resources for a device in a Linux client session. It correctly destroy"
+  },
+  {
+    "fact_id": "zep_fact_18",
+    "timestamp": "2026-11-05T17:43:58.419396",
+    "algorithm": "ag_jasper_jpc_enc_211785",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_jasper_jpc_enc_211785: has_error=True. Defect: Detected Defect. Explanation: No detailed explanation."
+  },
+  {
+    "fact_id": "zep_fact_19",
+    "timestamp": "2026-11-05T17:44:35.576995",
+    "algorithm": "ag_lua_None_344242",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_lua_None_344242: has_error=False. Defect: None. Explanation: The provided code appears to be a C function for handling Lua runtime errors, not a Python function. Therefore, it does "
+  },
+  {
+    "fact_id": "zep_fact_20",
+    "timestamp": "2026-11-05T17:45:29.112979",
+    "algorithm": "ag_tensorflow_resource_variable_ops_196587",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_tensorflow_resource_variable_ops_196587: has_error=True. Defect: Off-by-one Error. Explanation: The condition N_big <= std::numeric_limits<Index>::max() checks if the number of elements in indices is within the range"
+  },
+  {
+    "fact_id": "zep_fact_21",
+    "timestamp": "2026-11-05T17:46:13.138474",
+    "algorithm": "ag_linux_control_387593",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_linux_control_387593: has_error=True. Defect: Off-by-one Error. Explanation: The loop condition should be i < SNDRV_CTL_ELEM_ID_NAME_MAXLEN to ensure that the loop runs for all characters in the na"
+  },
+  {
+    "fact_id": "zep_fact_22",
+    "timestamp": "2026-11-05T17:46:55.566776",
+    "algorithm": "ag_tensorflow_constant_folding_197826",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_tensorflow_constant_folding_197826: has_error=False. Defect: None. Explanation: The provided Python code appears to be a function that determines whether a TensorFlow node can be constant-folded. It d"
+  },
+  {
+    "fact_id": "zep_fact_23",
+    "timestamp": "2026-11-05T17:47:27.901809",
+    "algorithm": "ag_openssl_None_506696",
+    "category": "algorithmic",
+    "synthesized_fact": "Synthesized temporal record for ag_openssl_None_506696: has_error=False. Defect: None. Explanation: The provided code snippet is a C function, not Python, and it does not contain any syntax errors, functional bugs, edge-"
+  }
+]

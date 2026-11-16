@@ -1,0 +1,345 @@
+[
+  {
+    "problem_id": "EXAM-TD-101",
+    "title": "Minimum Temperature Delta Tracker",
+    "mlcq_category": "MLCQ: Negative Initialization & Boundary Debt",
+    "severity": "major",
+    "function_name": "max_negative_dip",
+    "description": "Given a list of daily temperature deltas, return the highest (least negative or most positive) reading. Return 0 if the list is empty.",
+    "clean_code": "def max_negative_dip(readings: list[int]) -> int:\n    if not readings:\n        return 0\n    highest = readings[0]\n    for r in readings[1:]:\n        if r > highest:\n            highest = r\n    return highest\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Mixed positive and negative readings",
+        "call_expr": "max_negative_dip([-4, 2, 9, -1])",
+        "expected_output": 9,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "All positive readings",
+        "call_expr": "max_negative_dip([3, 15, 7])",
+        "expected_output": 15,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "Single positive reading",
+        "call_expr": "max_negative_dip([5])",
+        "expected_output": 5,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: All negative readings (must return -3, not 0)",
+        "call_expr": "max_negative_dip([-12, -3, -9, -7])",
+        "expected_output": -3,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Empty reading list returns 0",
+        "call_expr": "max_negative_dip([])",
+        "expected_output": 0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX101_SUBTLE_NEG",
+        "defect_type": "negative_or_zero_edge_debt",
+        "strategy_name": "Zero initialization instead of first element",
+        "targeted_edge_case": "All-negative readings (E4)",
+        "mutated_code": "def max_negative_dip(readings: list[int]) -> int:\n    if not readings:\n        return 0\n    highest = 0\n    for r in readings:\n        if r > highest:\n            highest = r\n    return highest\n",
+        "explanation": "Initializes `highest = 0`, breaking only all-negative test E4 while E1, E2, E3, E5 pass (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "EXAM-TD-102",
+    "title": "CPU Quota Throttling Threshold Checker",
+    "mlcq_category": "MLCQ: Boundary Comparison & Precision Debt",
+    "severity": "major",
+    "function_name": "compute_throttled_bill",
+    "description": "Sum positive CPU usage units, apply a 20% surcharge (* 1.2) if usage >= 50.0, and round to 2 decimals.",
+    "clean_code": "def compute_throttled_bill(usages: list[float]) -> float:\n    if not usages:\n        return 0.0\n    total = sum(u for u in usages if u > 0)\n    if total >= 50.0:\n        total *= 1.2\n    return round(total, 2)\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Usage below 50.0 threshold",
+        "call_expr": "compute_throttled_bill([10.0, 15.0, 5.0])",
+        "expected_output": 30.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "Usage well above 50.0 threshold",
+        "call_expr": "compute_throttled_bill([40.0, 60.0])",
+        "expected_output": 120.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "Empty usage list",
+        "call_expr": "compute_throttled_bill([])",
+        "expected_output": 0.0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: Exact 50.0 threshold triggers 20% surcharge",
+        "call_expr": "compute_throttled_bill([20.0, 30.0])",
+        "expected_output": 60.0,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Two-decimal rounding with negative credit noise ignored",
+        "call_expr": "compute_throttled_bill([12.344, -5.0, 10.0])",
+        "expected_output": 22.34,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX102_SUBTLE_BOUNDARY",
+        "defect_type": "off_by_one_boundary",
+        "strategy_name": "Strict > 50.0 threshold check",
+        "targeted_edge_case": "Exact 50.0 usage boundary (E4)",
+        "mutated_code": "def compute_throttled_bill(usages: list[float]) -> float:\n    if not usages:\n        return 0.0\n    total = sum(u for u in usages if u > 0)\n    if total > 50.0:\n        total *= 1.2\n    return round(total, 2)\n",
+        "explanation": "Uses `total > 50.0` instead of `>= 50.0`, breaking only E4 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "EXAM-TD-103",
+    "title": "Leaderboard Top-N Selector with Alphabetical Tie-Break",
+    "mlcq_category": "MLCQ: Sorting Tie-Breaker Debt",
+    "severity": "major",
+    "function_name": "top_n_players",
+    "description": "Return top n player names sorted by points descending, and player name ascending on ties.",
+    "clean_code": "def top_n_players(scores: list[tuple[str, int]], n: int) -> list[str]:\n    if not scores or n <= 0:\n        return []\n    ranked = sorted(scores, key=lambda x: (-x[1], x[0]))\n    return [name for name, _ in ranked[:n]]\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Distinct player scores",
+        "call_expr": "top_n_players([('alice', 10), ('bob', 30), ('carol', 20)], 2)",
+        "expected_output": ["bob", "carol"],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "n exceeds player count",
+        "call_expr": "top_n_players([('dan', 5), ('eve', 15)], 4)",
+        "expected_output": ["eve", "dan"],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "n=0 returns empty list",
+        "call_expr": "top_n_players([('alice', 10)], 0)",
+        "expected_output": [],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: Equal points tie-broken alphabetically ascending",
+        "call_expr": "top_n_players([('zack', 100), ('adam', 100), ('mike', 50)], 2)",
+        "expected_output": ["adam", "zack"],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Negative penalty points",
+        "call_expr": "top_n_players([('p2', -20), ('p1', -5), ('p3', -50)], 2)",
+        "expected_output": ["p1", "p2"],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX103_SUBTLE_TIE",
+        "defect_type": "tie_breaker_or_duplicate_debt",
+        "strategy_name": "Reverse tuple sort breaking alphabetical tie-break",
+        "targeted_edge_case": "Equal score tie-breaking (E4)",
+        "mutated_code": "def top_n_players(scores: list[tuple[str, int]], n: int) -> list[str]:\n    if not scores or n <= 0:\n        return []\n    ranked = sorted(scores, key=lambda x: (x[1], x[0]), reverse=True)\n    return [name for name, _ in ranked[:n]]\n",
+        "explanation": "Reverses both score and name order on ties, breaking only E4 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "EXAM-TD-104",
+    "title": "Consecutive Signal Packet Bundler",
+    "mlcq_category": "MLCQ: Singleton Guard & Loop State Debt",
+    "severity": "major",
+    "function_name": "bundle_packets",
+    "description": "Group consecutive identical packet codes into (code, count) pairs. Return [] for empty input.",
+    "clean_code": "def bundle_packets(packets: list[str]) -> list[tuple[str, int]]:\n    if not packets:\n        return []\n    out: list[tuple[str, int]] = []\n    cur = packets[0]\n    cnt = 1\n    for p in packets[1:]:\n        if p == cur:\n            cnt += 1\n        else:\n            out.append((cur, cnt))\n            cur = p\n            cnt = 1\n    out.append((cur, cnt))\n    return out\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Standard mixed packet bursts",
+        "call_expr": "bundle_packets(['SYN', 'SYN', 'ACK', 'FIN'])",
+        "expected_output": [["SYN", 2], ["ACK", 1], ["FIN", 1]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "All distinct packets",
+        "call_expr": "bundle_packets(['P1', 'P2', 'P3'])",
+        "expected_output": [["P1", 1], ["P2", 1], ["P3", 1]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "Repeated uniform burst",
+        "call_expr": "bundle_packets(['RST', 'RST', 'RST'])",
+        "expected_output": [["RST", 3]],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: Single packet stream",
+        "call_expr": "bundle_packets(['ACK'])",
+        "expected_output": [["ACK", 1]],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Empty packet stream",
+        "call_expr": "bundle_packets([])",
+        "expected_output": [],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX104_SUBTLE_SINGLETON",
+        "defect_type": "empty_or_singleton_debt",
+        "strategy_name": "Singleton packet drop (`len(packets) <= 1`)",
+        "targeted_edge_case": "Single packet stream (E4)",
+        "mutated_code": "def bundle_packets(packets: list[str]) -> list[tuple[str, int]]:\n    if len(packets) <= 1:\n        return []\n    out: list[tuple[str, int]] = []\n    cur = packets[0]\n    cnt = 1\n    for p in packets[1:]:\n        if p == cur:\n            cnt += 1\n        else:\n            out.append((cur, cnt))\n            cur = p\n            cnt = 1\n    out.append((cur, cnt))\n    return out\n",
+        "explanation": "Drops single-packet streams via `len(packets) <= 1`, breaking only E4 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "EXAM-TD-105",
+    "title": "Sequential Memory Pool Block Allocator",
+    "mlcq_category": "MLCQ: State Rollback & Exact Capacity Debt",
+    "severity": "major",
+    "function_name": "reserve_memory_blocks",
+    "description": "Allocate `req_mb` across memory blocks in order and return remaining block sizes. If total free memory < req_mb, return original blocks unchanged.",
+    "clean_code": "def reserve_memory_blocks(blocks: list[int], req_mb: int) -> list[int]:\n    if req_mb <= 0 or not blocks:\n        return list(blocks)\n    if sum(blocks) < req_mb:\n        return list(blocks)\n    need = req_mb\n    res: list[int] = []\n    for b in blocks:\n        if need <= 0:\n            res.append(b)\n        elif b >= need:\n            res.append(b - need)\n            need = 0\n        else:\n            res.append(0)\n            need -= b\n    return res\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Span across first two blocks",
+        "call_expr": "reserve_memory_blocks([64, 128, 256], 100)",
+        "expected_output": [0, 92, 256],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "Fit inside first block",
+        "call_expr": "reserve_memory_blocks([128, 64], 32)",
+        "expected_output": [96, 64],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "Zero allocation request",
+        "call_expr": "reserve_memory_blocks([32, 64], 0)",
+        "expected_output": [32, 64],
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: Exact total capacity allocation",
+        "call_expr": "reserve_memory_blocks([32, 32, 64], 128)",
+        "expected_output": [0, 0, 0],
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Over-capacity request returns original blocks unchanged",
+        "call_expr": "reserve_memory_blocks([32, 32], 100)",
+        "expected_output": [32, 32],
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX105_SUBTLE_ROLLBACK",
+        "defect_type": "state_accumulation_debt",
+        "strategy_name": "Omit total capacity pre-check before mutating blocks",
+        "targeted_edge_case": "Over-capacity rollback (E5)",
+        "mutated_code": "def reserve_memory_blocks(blocks: list[int], req_mb: int) -> list[int]:\n    if req_mb <= 0 or not blocks:\n        return list(blocks)\n    need = req_mb\n    res: list[int] = []\n    for b in blocks:\n        if need <= 0:\n            res.append(b)\n        elif b >= need:\n            res.append(b - need)\n            need = 0\n        else:\n            res.append(0)\n            need -= b\n    return res\n",
+        "explanation": "Omits `if sum(blocks) < req_mb: return list(blocks)`, breaking only E5 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  },
+  {
+    "problem_id": "EXAM-TD-106",
+    "title": "API Version Tuple Normalizer & Comparator",
+    "mlcq_category": "MLCQ: Numeric vs Lexicographic Version Debt",
+    "severity": "major",
+    "function_name": "compare_api_versions",
+    "description": "Compare two dotted version strings 'x.y.z' (missing parts default to 0). Return 1 if a > b, -1 if a < b, 0 if equal.",
+    "clean_code": "def compare_api_versions(a: str, b: str) -> int:\n    va = [int(x) for x in a.strip().split('.') if x != '']\n    vb = [int(x) for x in b.strip().split('.') if x != '']\n    while len(va) < 3:\n        va.append(0)\n    while len(vb) < 3:\n        vb.append(0)\n    if va[:3] > vb[:3]:\n        return 1\n    if va[:3] < vb[:3]:\n        return -1\n    return 0\n",
+    "test_cases": [
+      {
+        "test_id": "E1",
+        "description": "Higher major version",
+        "call_expr": "compare_api_versions('3.0.0', '2.5.9')",
+        "expected_output": 1,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E2",
+        "description": "Lower minor version",
+        "call_expr": "compare_api_versions('1.2.0', '1.8.0')",
+        "expected_output": -1,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E3",
+        "description": "Equal 3-part versions",
+        "call_expr": "compare_api_versions('2.4.1', '2.4.1')",
+        "expected_output": 0,
+        "is_edge_case": false
+      },
+      {
+        "test_id": "E4",
+        "description": "Edge case: Double-digit minor version ('2.12.0' > '2.3.0')",
+        "call_expr": "compare_api_versions('2.12.0', '2.3.0')",
+        "expected_output": 1,
+        "is_edge_case": true
+      },
+      {
+        "test_id": "E5",
+        "description": "Edge case: Short version string ('2.4' == '2.4.0')",
+        "call_expr": "compare_api_versions('2.4', '2.4.0')",
+        "expected_output": 0,
+        "is_edge_case": true
+      }
+    ],
+    "candidate_mutations": [
+      {
+        "mutation_id": "EX106_SUBTLE_LEX",
+        "defect_type": "precision_or_rounding_debt",
+        "strategy_name": "String segment comparison without int conversion",
+        "targeted_edge_case": "Double-digit version segment (E4)",
+        "mutated_code": "def compare_api_versions(a: str, b: str) -> int:\n    va = [x for x in a.strip().split('.') if x != '']\n    vb = [x for x in b.strip().split('.') if x != '']\n    while len(va) < 3:\n        va.append('0')\n    while len(vb) < 3:\n        vb.append('0')\n    if va[:3] > vb[:3]:\n        return 1\n    if va[:3] < vb[:3]:\n        return -1\n    return 0\n",
+        "explanation": "Compares segments as strings so '12' < '3', breaking only E4 (1/5 broken).",
+        "expected_broken_count": 1
+      }
+    ]
+  }
+]
+
