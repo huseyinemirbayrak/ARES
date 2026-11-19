@@ -11,19 +11,44 @@ import ast
 import inspect
 import json
 import math
+import os
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from ares.models import (
     AttackerOutput,
     CodeProblem,
+    DefectCategory,
     DefenderOutput,
     RefereeVerdict,
     SingleTestExecution,
     SuiteExecutionResult,
     UnitTestCase,
 )
+
+_SAFE_SUBPROCESS_ENV_KEYS: set[str] = {
+    "PATH",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+}
+
+
+def _safe_subprocess_env() -> dict[str, str]:
+    """Return a minimal environment without API keys or host secrets for isolated code execution."""
+    clean_env = {
+        k: v for k, v in os.environ.items() if k.upper() in _SAFE_SUBPROCESS_ENV_KEYS
+    }
+    clean_env["PYTHONIOENCODING"] = "utf-8"
+    clean_env["PYTHONUTF8"] = "1"
+    return clean_env
 
 
 def _normalize_value(val: Any) -> Any:
@@ -65,6 +90,9 @@ payload = json.loads(sys.stdin.read())
 env = {"math": math}
 try:
     exec(compile(payload["code"], "<ares_artifact>", "exec"), env, env)
+    setup_code = payload.get("setup_code") or ""
+    if setup_code:
+        exec(compile(setup_code, "<ares_test_setup>", "exec"), env, env)
     actual = eval(compile(payload["call_expr"], "<ares_test_call>", "eval"), env, env)
     print(json.dumps({"ok": True, "actual": _normalize(actual)}, default=repr))
 except Exception as exc:
@@ -72,21 +100,192 @@ except Exception as exc:
 """
 
 
+_BLOCKED_MODULES: set[str] = {
+    "os",
+    "sys",
+    "subprocess",
+    "shutil",
+    "socket",
+    "http",
+    "urllib",
+    "ctypes",
+    "importlib",
+    "pickle",
+    "marshal",
+    "pty",
+    "signal",
+    "multiprocessing",
+    "threading",
+    "webbrowser",
+    "builtins",
+    "inspect",
+}
+
+_BLOCKED_CALLS: set[str] = {
+    "open",
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "breakpoint",
+    "input",
+    "globals",
+    "locals",
+    "vars",
+    "getattr",
+    "setattr",
+    "delattr",
+}
+
+
+def _check_code_safety(tree: ast.AST) -> str | None:
+    """Reject LLM-generated code containing dangerous OS/filesystem/network/eval primitives."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root_mod = alias.name.split(".")[0]
+                if root_mod in _BLOCKED_MODULES:
+                    return f"Blocked import `{alias.name}`"
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                root_mod = node.module.split(".")[0]
+                if root_mod in _BLOCKED_MODULES:
+                    return f"Blocked import from `{node.module}`"
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in _BLOCKED_CALLS:
+                return f"Blocked builtin call `{node.func.id}()`"
+        elif isinstance(node, ast.Attribute):
+            if node.attr in (
+                "__subclasses__",
+                "__builtins__",
+                "__globals__",
+                "__code__",
+                "__loader__",
+                "__spec__",
+            ):
+                return f"Blocked dunder attribute `{node.attr}`"
+    return None
+
+
+_SUBPROCESS_BATCH_RUNNER = """
+import inspect, json, math, sys
+
+def _normalize(val):
+    if inspect.isgenerator(val):
+        return [_normalize(v) for v in val]
+    if isinstance(val, set):
+        return sorted((_normalize(v) for v in val), key=repr)
+    if isinstance(val, (tuple, list)):
+        return [_normalize(v) for v in val]
+    if isinstance(val, dict):
+        return {str(k): _normalize(v) for k, v in val.items()}
+    if isinstance(val, float):
+        if math.isinf(val):
+            return "INF" if val > 0 else "-INF"
+        return round(val, 6)
+    return val
+
+payload = json.loads(sys.stdin.read())
+code_obj = compile(payload["code"], "<ares_artifact>", "exec")
+compiled_setups = {}
+results = []
+setup_codes = payload.get("setup_codes") or [""] * len(payload["call_exprs"])
+for call_expr, setup_code in zip(payload["call_exprs"], setup_codes):
+    env = {"math": math}
+    try:
+        exec(code_obj, env, env)
+        if setup_code:
+            setup_obj = compiled_setups.get(setup_code)
+            if setup_obj is None:
+                setup_obj = compile(setup_code, "<ares_test_setup>", "exec")
+                compiled_setups[setup_code] = setup_obj
+            exec(setup_obj, env, env)
+        actual = eval(compile(call_expr, "<ares_test_call>", "eval"), env, env)
+        results.append({"ok": True, "actual": _normalize(actual)})
+    except Exception as exc:
+        results.append({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+print("\\n__ARES_BATCH_RESULT__" + json.dumps(results, default=repr))
+"""
+
+
+def _run_suite_batch_isolated(
+    code: str,
+    call_exprs: list[str],
+    timeout_seconds: float,
+    setup_codes: list[str] | None = None,
+) -> list[tuple[bool, Any, str | None]] | None:
+    """Fast-path: run all test cases for a suite inside 1 isolated subprocess (~5x faster).
+
+    Returns None on TimeoutExpired or runner failure so caller falls back to per-test isolation.
+    """
+    payload = json.dumps(
+        {
+            "code": code,
+            "call_exprs": call_exprs,
+            "setup_codes": setup_codes or [""] * len(call_exprs),
+        }
+    )
+    batch_timeout = min(max(timeout_seconds * 2.0, timeout_seconds + 1.5), 10.0)
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _SUBPROCESS_BATCH_RUNNER],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=batch_timeout,
+            env=_safe_subprocess_env(),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+    if proc.returncode != 0:
+        return None
+
+    marker = "__ARES_BATCH_RESULT__"
+    for line in reversed(proc.stdout.splitlines()):
+        if line.startswith(marker):
+            try:
+                raw_list = json.loads(line[len(marker) :])
+                if isinstance(raw_list, list) and len(raw_list) == len(call_exprs):
+                    return [
+                        (
+                            bool(item.get("ok")),
+                            item.get("actual"),
+                            item.get("error"),
+                        )
+                        for item in raw_list
+                    ]
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
 def _run_single_test_in_ns(
-    code: str, call_expr: str, timeout_seconds: float = 3.0
+    code: str,
+    call_expr: str,
+    timeout_seconds: float = 3.0,
+    setup_code: str = "",
 ) -> Any:
     """Execute code definition and evaluate call_expr in an isolated subprocess."""
-    ok, actual, err_msg, _ = _run_single_test_isolated(code, call_expr, timeout_seconds)
+    ok, actual, err_msg, _ = _run_single_test_isolated(
+        code, call_expr, timeout_seconds, setup_code=setup_code
+    )
     if not ok:
         raise RuntimeError(err_msg or "Test execution failed")
     return actual
 
 
 def _run_single_test_isolated(
-    code: str, call_expr: str, timeout_seconds: float
+    code: str,
+    call_expr: str,
+    timeout_seconds: float,
+    setup_code: str = "",
 ) -> tuple[bool, Any, str | None, bool]:
     """Execute code + call_expr in an isolated subprocess that is killed on timeout."""
-    payload = json.dumps({"code": code, "call_expr": call_expr})
+    payload = json.dumps(
+        {"code": code, "call_expr": call_expr, "setup_code": setup_code}
+    )
     try:
         proc = subprocess.run(
             [sys.executable, "-c", _SUBPROCESS_RUNNER],
@@ -94,6 +293,7 @@ def _run_single_test_isolated(
             text=True,
             capture_output=True,
             timeout=timeout_seconds,
+            env=_safe_subprocess_env(),
             check=False,
         )
     except subprocess.TimeoutExpired:
@@ -135,7 +335,7 @@ class DeterministicReferee:
         """Deterministically parse and execute all 4-5 unit test cases against `code`."""
         total = len(test_cases)
         try:
-            ast.parse(code)
+            parsed_tree = ast.parse(code)
         except SyntaxError as exc:
             return SuiteExecutionResult(
                 syntax_valid=False,
@@ -149,15 +349,45 @@ class DeterministicReferee:
                 syntax_or_runtime_error=f"SyntaxError: {exc}",
             )
 
+        safety_violation = _check_code_safety(parsed_tree)
+        if safety_violation is not None:
+            return SuiteExecutionResult(
+                syntax_valid=False,
+                timed_out=False,
+                total_tests=total,
+                passed_count=0,
+                failed_count=total,
+                failed_test_ids=[tc.test_id for tc in test_cases],
+                passed_test_ids=[],
+                test_details=[],
+                syntax_or_runtime_error=f"SecurityPolicyViolation: {safety_violation}",
+            )
+
         passed_ids: list[str] = []
         failed_ids: list[str] = []
         details: list[SingleTestExecution] = []
         any_timeout = False
 
-        for tc in test_cases:
-            ok, actual, exec_err, timed_out = _run_single_test_isolated(
-                code, tc.call_expr, self.timeout_seconds
-            )
+        # Fast-path: 1 subprocess for the entire suite (~5x faster on Windows);
+        # falls back to per-test isolated subprocesses if any test hangs/crashes.
+        batch_results = _run_suite_batch_isolated(
+            code,
+            [tc.call_expr for tc in test_cases],
+            self.timeout_seconds,
+            setup_codes=[tc.setup_code for tc in test_cases],
+        )
+
+        for idx, tc in enumerate(test_cases):
+            if batch_results is not None:
+                ok, actual, exec_err = batch_results[idx]
+                timed_out = False
+            else:
+                ok, actual, exec_err, timed_out = _run_single_test_isolated(
+                    code,
+                    tc.call_expr,
+                    self.timeout_seconds,
+                    setup_code=tc.setup_code,
+                )
             if timed_out:
                 any_timeout = True
                 passed = False
@@ -235,12 +465,25 @@ class DeterministicReferee:
         else:
             attack_validity = "valid_subtle_attack"
 
-        # 2. Check Defender classification and repair
-        ground_truth_defect = (
-            attacker_output.injected_defect_type
-            if broken > 0
-            else "clean"
+        # 2. Check Defender classification and repair (with explicit label provenance)
+        matched_curated = next(
+            (
+                m
+                for m in problem.candidate_mutations
+                if m.mutated_code.strip() == attacker_output.mutated_code.strip()
+            ),
+            None,
         )
+        if broken == 0:
+            ground_truth_defect: DefectCategory = "clean"
+            ground_truth_source: Literal["curated", "ast_diff", "attacker_claim"] = "ast_diff"
+        elif matched_curated is not None:
+            ground_truth_defect = matched_curated.defect_type
+            ground_truth_source = "curated"
+        else:
+            ground_truth_defect = attacker_output.injected_defect_type
+            ground_truth_source = "attacker_claim"
+
         classification_correct = (
             defender_output.predicted_defect_type == ground_truth_defect
         )
@@ -305,8 +548,8 @@ class DeterministicReferee:
 
         elif attack_validity == "invalid_over_broken_attack":
             attacker_reward = -0.9
-            winner = "defender"
-            defender_reward = 0.85 if defense_repaired_all else 0.2
+            winner = "defender" if defense_repaired_all else "draw"
+            defender_reward = 0.85 if defense_repaired_all else 0.0
             attacker_feedback = (
                 f"[INVALID OVER-BROKEN ATTACK] Your mutation broke {broken}/{total} tests "
                 f"({attacker_suite.failed_test_ids}), exceeding the maximum of "
@@ -320,8 +563,8 @@ class DeterministicReferee:
 
         else:  # invalid_syntax_or_timeout
             attacker_reward = -1.0
-            winner = "defender"
-            defender_reward = 0.8 if defense_repaired_all else 0.2
+            winner = "defender" if defense_repaired_all else "draw"
+            defender_reward = 0.8 if defense_repaired_all else 0.0
             attacker_feedback = (
                 f"[INVALID SYNTAX/TIMEOUT] Your mutated code failed execution: "
                 f"{attacker_suite.syntax_or_runtime_error}"
@@ -338,6 +581,7 @@ class DeterministicReferee:
             attacker_suite_result=attacker_suite,
             defender_suite_result=defender_suite,
             ground_truth_defect=ground_truth_defect,
+            ground_truth_source=ground_truth_source,
             defender_predicted_defect=defender_output.predicted_defect_type,
             classification_correct=classification_correct,
             defense_repaired_all_tests=defense_repaired_all,

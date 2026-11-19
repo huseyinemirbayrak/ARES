@@ -10,6 +10,7 @@ self_play:
   elo_k_factor: 32.0
   blind_attacker: false      # Hide unit test cases from AttackerAgent prompt
   blind_defender: false      # Hide failing test details from DefenderAgent prompt
+  strict_llm: false          # If true, never fall back to AST heuristics when LLM fails
 
 referee:
   deterministic: true
@@ -33,17 +34,26 @@ referee:
     defender_clean_passthrough: 0.5          # Correctly preserved clean code when attacker failed to break tests
 
 memory:
-  framework: "cognee"
+  # Supported backends: "auto" (use real Cognee if installed & reachable, else local_graph),
+  # "cognee" (strict real Cognee SDK: add/cognify/search; raises if unavailable),
+  # "local_graph" (honest local SQLite + AST/Diff episodic graph store).
+  backend: "auto"
   portable_store_dir: "memory_store"
   portable_bundle_file: "memory_store/cognee_portable_graph.json"
   top_k_memories: 4
-  enable_cognee_native_if_installed: true
+  cognee_embedding_provider: null  # Defaults to LLM provider; set "ollama" for local embeddings + remote LLM
+  cognee_embedding_model: "nomic-embed-text"
+  cognee_embedding_dimensions: 768
+  cognee_search_type: "CHUNKS"
+  cognify_interval: 1
   auto_export_portable_snapshot: true
 
 llm:
   # Supported modes: "auto", "ollama", "openai_compatible", "adaptive_local"
   # "auto" checks if local Ollama / OpenAI endpoint is reachable, and seamlessly falls back to "adaptive_local"
   mode: "auto"
+  timeout_seconds: 60.0
+  num_ctx: 8192
   attacker_model:
     provider: "ollama"
     model_name: "qwen2.5-coder:7b"

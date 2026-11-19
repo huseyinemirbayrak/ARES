@@ -147,7 +147,7 @@
     "severity": "major",
     "function_name": "count_allowed_requests",
     "description": "Given sorted request timestamps (seconds), a window_size, and max_requests allowed in [t - window_size + 1, t] inclusive, return how many requests are allowed.",
-    "clean_code": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    for t in timestamps:\n        cutoff = t - window_size + 1\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            allowed_delta = 1\n        else:\n            allowed_delta = 0\n        if 'total' not in locals():\n            total = 0\n        total += allowed_delta\n    return total\n",
+    "clean_code": "def count_allowed_requests(timestamps: list[int], window_size: int, max_requests: int) -> int:\n    if not timestamps or max_requests <= 0 or window_size <= 0:\n        return 0\n    accepted: list[int] = []\n    total = 0\n    for t in timestamps:\n        cutoff = t - window_size + 1\n        accepted = [prev for prev in accepted if prev >= cutoff]\n        if len(accepted) < max_requests:\n            accepted.append(t)\n            total += 1\n    return total\n",
     "test_cases": [
       {
         "test_id": "T1",

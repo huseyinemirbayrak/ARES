@@ -209,7 +209,7 @@ def test_new_datasets_connected_to_load_problems_and_orchestrator(tmp_path: Path
         attacker=AttackerAgent(llm_client=llm, blind_mode=True),
         defender=DefenderAgent(llm_client=llm, blind_mode=True),
         referee=DeterministicReferee(min_broken_tests=1, max_broken_tests=2),
-        memory=CogneeMemoryManager(store_dir=tmp_path / "mem"),
+        memory=CogneeMemoryManager(store_dir=tmp_path / "mem", backend="local_graph"),
         output_dir=tmp_path / "out",
     )
     scoreboard = orchestrator.run_self_play(num_turns=3, exam_interval=3, run_baseline_exam=False)

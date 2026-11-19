@@ -79,6 +79,14 @@ class UnitTestCase(BaseModel):
     )
     expected_output: Any
     is_edge_case: bool = False
+    setup_code: str = Field(
+        default="",
+        description=(
+            "Optional trusted test-harness code (e.g. helper classes) executed after the artifact "
+            "and before `call_expr`. It is NOT part of `clean_code`, is never shown to or mutated "
+            "by the agents."
+        ),
+    )
 
 
 class CandidateMutation(BaseModel):
@@ -121,8 +129,10 @@ class StructuredPromptConfig(BaseModel):
     validation: str
     examples: list[dict[str, Any]] = Field(default_factory=list)
 
-    def render_system_prompt(self, memories: list[str] | None = None) -> str:
-        """Render the full 5-part structured prompt with portable Cognee memories."""
+    def render_system_prompt(
+        self, memories: list[str] | None = None, blind_mode: bool = False
+    ) -> str:
+        """Render the full 5-part structured prompt with retrieved memories and blind-mode rules."""
         examples_str = ""
         for idx, ex in enumerate(self.examples, start=1):
             examples_str += f"\n--- Example {idx}: {ex.get('title', 'Sample')} ---\n"
@@ -136,13 +146,31 @@ class StructuredPromptConfig(BaseModel):
             else "- No prior episodic memories recorded yet."
         )
 
+        blind_directive = ""
+        if blind_mode:
+            if self.agent_role == "attacker":
+                blind_directive = (
+                    "\n=== [BLIND MODE OVERRIDE] ===\n"
+                    "Unit test cases are intentionally HIDDEN. Do NOT expect test inputs in the user prompt. "
+                    "Analyze the function specification, control flow, edge conditions, and your past CODE DIFF "
+                    "memories below to craft a minimal 1-2 line mutation that breaks only subtle edge cases.\n"
+                )
+            else:
+                blind_directive = (
+                    "\n=== [BLIND MODE OVERRIDE] ===\n"
+                    "Failing unit test inputs and assertion errors are intentionally HIDDEN. "
+                    "Perform careful static code review against the Function Specification, check boundary/edge "
+                    "conditions, and leverage your past VERIFIED REPAIR DIFF memories below.\n"
+                )
+
         return (
-            f"=== [1. TASK] ===\n{self.task.strip()}\n\n"
+            f"=== [1. TASK] ===\n{self.task.strip()}\n"
+            f"{blind_directive}\n"
             f"=== [2. RECIPE] ===\n{self.recipe.strip()}\n\n"
             f"=== [3. OUTPUT SCHEMA] ===\n{self.output.strip()}\n\n"
             f"=== [4. VALIDATION CHECKLIST] ===\n{self.validation.strip()}\n\n"
             f"=== [5. EXAMPLES] ===\n{examples_str.strip()}\n\n"
-            f"=== [PORTABLE COGNEE & IN-CONTEXT MEMORY] ===\n{memory_block}\n"
+            f"=== [RETRIEVED EPISODIC & DIFF MEMORY — APPLY THESE LESSONS] ===\n{memory_block}\n"
         )
 
 
@@ -211,6 +239,7 @@ class RefereeVerdict(BaseModel):
     attacker_suite_result: SuiteExecutionResult
     defender_suite_result: SuiteExecutionResult
     ground_truth_defect: DefectCategory
+    ground_truth_source: Literal["curated", "ast_diff", "attacker_claim"] = "attacker_claim"
     defender_predicted_defect: DefectCategory
     classification_correct: bool
     defense_repaired_all_tests: bool
@@ -253,6 +282,21 @@ class ExamResult(BaseModel):
     per_problem_details: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class TurnReflexion(BaseModel):
+    """Structured code-diff and AST-feature reflexion produced after each turn."""
+
+    turn_id: int
+    problem_id: str
+    function_name: str
+    ast_features: list[str] = Field(default_factory=list)
+    attack_diff: str = ""
+    repair_diff: str = ""
+    attacker_outcome: Literal["win", "caught", "invalid"] = "invalid"
+    defender_outcome: Literal["repaired", "failed"] = "failed"
+    attacker_lesson: str
+    defender_lesson: str
+
+
 class ARESGraphState(TypedDict, total=False):
     """Typed state passed across nodes in the LangGraph StateGraph orchestrator."""
 
@@ -266,6 +310,7 @@ class ARESGraphState(TypedDict, total=False):
     attacker_suite_result: dict[str, Any]
     defender_output: dict[str, Any]
     verdict: dict[str, Any]
+    reflexion: dict[str, Any]
     attacker_elo: float
     defender_elo: float
     attacker_wins: int

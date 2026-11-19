@@ -1,38 +1,50 @@
-# ARES: Adversarial Self-Play for Software Analysis (Tak-Çıkar / Plug-and-Play)
+# ARES: Adversarial Self-Play for Software Analysis
 
-**ARES**, yazılım analizi, teknik borç (technical debt) tespiti ve otomatik kod onarımı için geliştirilmiş açık kaynaklı, **%100 Tak-Çıkar (Plug-and-Play)** bir **Adversarial Self-Play (Çekişmeli Öz-Oyun)** altyapısıdır.
-
----
-
-## Temel Yetenekler (Core Capabilities)
-
-1. **Tak-Çıkar (Plug-and-Play) Veriseti Adaptörü (`PlugAndPlayDatasetAdapter`)**:
-   - Yarın herhangi bir dış verisetini (`.json`, `.jsonl`, `.yaml`, `.csv` formatında) sisteme doğrudan dahil edebilirsiniz (`--dataset` ve `--exam-dataset`).
-   - Yeni ekleyeceğiniz verisetinde **önceden tanımlanmış saldırı mutasyonları (`candidate_mutations`), fonksiyon adı (`function_name`) veya beklenen çıktı değerleri bulunmak zorunda değildir!**
-   - Sadece Python fonksiyon kodunu (`code` / `clean_code` / `solution`) ve `assert` ifadelerini (veya `input`/`output` çiftlerini) vermeniz yeterlidir:
-     - [`PlugAndPlayDatasetAdapter`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/ARES/ares/datasets/adapter.py) fonksiyon adını AST üzerinden otomatik bulur, `assert fn(x) == y` satırlarını deterministik test senaryolarına çevirir.
-     - [`ASTSurgicalMutator`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/ARES/ares/agents/ast_mutator.py) herhangi bir Python fonksiyonunun AST ağacını analiz ederek **1 veya 2 testi kıracak** sinsi mutasyonları otomatik üretir ve doğrular.
-     - [`ASTSurgicalRepairer`](file:///C:/Users/LENOVO/.gemini/antigravity/scratch/ARES/ares/agents/ast_mutator.py) değişken isimlerinden bağımsız genel AST dönüşümleriyle (ve yerel LLM ile) herhangi bir fonksiyondaki hatayı onarır.
-
-2. **İsteğe Bağlı (On-Demand) Taşınabilir Cognee Hafıza Export / Import / Merge (`CogneeMemoryManager`)**:
-   - Hafızayı istediğiniz anda **`.json`** (tek dosya Knowledge Graph) veya **`.zip`** (Knowledge Graph JSON + SQLite veritabanı + `episodes.jsonl` tam arşiv paketi) olarak dışa aktarabilir (`--export-only` veya `--export-memory`) ve içe aktarabilirsiniz (`--import-only` veya `--import-memory`).
-   - **İki Farklı İçe Aktarma Modu (`--import-mode`)**:
-     - `replace`: Dışarıdan verilen hafıza paketini birebir yükler.
-     - `merge`: Farklı bir verisetinde veya farklı bir yerel LLM'de eğitilmiş hafıza paketini mevcut hafızanın üzerine **birleştirir (merge)**!
-   - **Rol Bazlı Dışa Aktarma (`--export-role`)**: Sadece `attacker`, sadece `defender` veya `both` (her ikisi) hafızasını dışa aktarabilirsiniz.
-   - **Hafıza İnceleme (`--inspect-memory`)**: Herhangi bir `.json` veya `.zip` hafıza paketinin içindeki öğrenilmiş hata sınıflarını, düğüm/kenar sayılarını ve doğrulanmış fonksiyon onarımlarını tablo halinde inceler.
-
-3. **Ana Organizasyon Şefi — `LangGraph` (`ARESLangGraphOrchestrator`)**:
-   - `select_problem_and_memory` $\rightarrow$ `attacker_turn` $\rightarrow$ `defender_turn` $\rightarrow$ `referee_evaluation` $\rightarrow$ `update_cognee_memory` $\rightarrow$ (`periodic_external_exam` veya sonraki tur).
-
-4. **%100 Deterministik Hakem (`DeterministicReferee`)**:
-   - Her problemdeki 4–5 deterministik testi çalıştırır. Saldırgan **sadece 1 veya 2 testi** bozarsa geçerli saldırı (`valid_subtle_attack`) sayılır; savunmacı kodu onarıp tüm testleri geçirirse turu kazanır.
+**ARES**, yazılım analizi, teknik borç (technical debt) tespiti ve otomatik kod onarımı için geliştirilmiş açık kaynaklı, **Tak-Çıkar (Plug-and-Play)** bir **Adversarial Self-Play (Çekişmeli Öz-Oyun)** altyapısıdır.
 
 ---
 
-## Yeni Bir Veriseti Nasıl Dahil Edilir? (Tak-Çıkar Veriseti Formatları)
+## Temel Mimari (Core Architecture)
 
-`examples/sample_plug_and_play_dataset.jsonl` dosyasında görebileceğiniz gibi, en sade haliyle sadece `id`, `code` ve `tests` içeren bir `.jsonl`, `.json`, `.yaml` veya `.csv` dosyası hazırlamanız yeterlidir:
+1. **5 Bölümlü Yapılandırılmış Prompt Sistemi (`StructuredPromptConfig`)**:
+   - Attacker ve Defender ajanları YAML üzerinden parametre kontrollü 5 bölümlü promptlarla (`Task`, `Recipe`, `Output`, `Validation`, `Examples`) yönetilir ([attacker_prompt.yaml](file:///c:/Users/LENOVO/.gemini/antigravity/scratch/ARES/configs/attacker_prompt.yaml), [defender_prompt.yaml](file:///c:/Users/LENOVO/.gemini/antigravity/scratch/ARES/configs/defender_prompt.yaml)).
+   - `--blind-attacker` / `--blind-defender` bayraklarıyla testlerin görünürlüğü kapatılıp açılabilir; `--strict-llm` ile saf LLM performansı ölçülür.
+
+2. **Gerçek LangGraph Orkestratörü (`ARESLangGraphOrchestrator`)**:
+   - Gerçek `langgraph.graph.StateGraph` + `MemorySaver` checkpoint yapısıyla çalışır:
+     `select_problem_and_memory` -> `attacker_turn` -> `defender_turn` -> `referee_evaluation` -> `generate_reflexion` -> `update_memory` -> (`periodic_external_exam` | sonraki tur | `END`).
+
+3. **Çift Arka Uçlu Hafıza Yönetimi (`CogneeMemoryManager` / `ARESMemoryManager`)**:
+   - `--memory-backend cognee`: Gerçek `cognee` Python SDK (`cognee.add`, `cognee.cognify`, `cognee.search`, `cognee.prune`) kullanır; kurulu/erişilebilir değilse sahtelemeden açık hata verir.
+   - `--memory-backend local_graph`: Dürüst yerel SQLite + JSON + AST/Unified-Diff episodik graf deposu (sıfır dış API çağrısı).
+   - `--memory-backend auto` (varsayılan): Gerçek Cognee hazırsa onu kullanır, değilse `local_graph` moduna geçip aktif arka ucu açıkça raporlar.
+   - On-demand `.json` / `.zip` Export, Import (`replace` / `merge`), rol bazlı export (`--export-role`) ve inceleme (`--inspect-memory`) destekler.
+
+4. **%100 Deterministik, Subprocess-İzole Hakem (`DeterministicReferee`)**:
+   - Kodları temiz ortam değişkenleriyle izole alt süreçte çalıştırır (timeout öldürme + AST güvenlik filtresi).
+   - 1–2 test bozma (subtle attack) kuralını uygular, deterministik ödül + ELO günceller ve `ground_truth_source` (`curated` / `ast_diff` / `attacker_claim`) bilgisini kaydeder.
+
+5. **Tak-Çıkar Veriseti Adaptörü (`PlugAndPlayDatasetAdapter`)**:
+   - `.json`, `.jsonl`, `.yaml`, `.csv` dosyalarının yanında yerleşik benchmark alias'larını destekler: `quixbugs` (40 metot), `agent_green` (12 metot), `cleanvul` (5 metot), `all_new` (57 metot).
+
+---
+
+## Kurulum (Installation)
+
+```powershell
+# Temel kurulum (LangGraph + Deterministic Referee + Local Episodic Graph)
+uv sync
+
+# Gerçek Cognee SDK desteği ile kurulum (opsiyonel extra)
+uv sync --extra cognee
+# veya: pip install -e ".[cognee]"
+```
+
+---
+
+## Yeni Bir Veriseti Nasıl Dahil Edilir? (Tak-Çıkar Formatı)
+
+`examples/sample_plug_and_play_dataset.jsonl` örneğindeki gibi sadece `id`, `code` ve `tests` içeren bir dosya yeterlidir:
 
 ```json
 {
@@ -52,53 +64,48 @@
 
 ## Komut Satırı (CLI) Kullanım Rehberi
 
-### 1. Yeni Bir Verisetini Doğrulama ve Öz-Oyuna Sokma (Tak-Çıkar)
+### 1. Öz-Oyun Çalıştırma (Yerel Ollama, LM Studio/vLLM veya OpenAI-Uyumlu API)
 ```powershell
-# Yeni verisetini doğrula (temiz kod testleri + otomatik AST mutasyon sentezi kontrolü):
-.\.venv\Scripts\python.exe run_ares.py --validate-dataset .\examples\sample_plug_and_play_dataset.jsonl
+# Temiz başlangıç (--fresh-memory) + Yerel Ollama + Saf LLM + Blind Mode
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 15 --exam-interval 5 --llm-mode ollama --attacker-model qwen2.5-coder:7b --defender-model qwen2.5-coder:7b --strict-llm --blind-attacker --blind-defender
 
-# Yeni verisetiyle öz-oyun ve dış sınav çalıştır:
-.\.venv\Scripts\python.exe run_ares.py --dataset .\examples\sample_plug_and_play_dataset.jsonl --turns 15 --exam-interval 5
+# Gerçek Cognee SDK ile (Ollama + nomic-embed-text)
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --memory-backend cognee --embedding-model nomic-embed-text --cognify-interval 3 --turns 15 --exam-interval 5
+
+# Herhangi bir OpenAI-uyumlu yerel veya bulut LLM (LM Studio, vLLM, OpenAI, OpenRouter, Groq vb.)
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --llm-mode openai_compatible --base-url http://localhost:1234/v1 --attacker-model qwen2.5-coder-7b --defender-model qwen2.5-coder-7b --strict-llm
+
+# Bulut LLM + OpenAI embedding (boyut otomatik 1536 olarak çözümlenir)
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --base-url https://api.openai.com/v1 --api-key $env:OPENAI_API_KEY --attacker-model gpt-4o-mini --defender-model gpt-4o-mini --memory-backend cognee --embedding-model text-embedding-3-small
 ```
 
-### 2. Hafızayı İsteğe Bağlı Dışa Aktarma (Export) ve İnceleme (Inspect)
+### 2. Veriseti Doğrulama ve Benchmark Seçimi
 ```powershell
-# Tur çalıştırmadan mevcut hafızayı anında .zip veya .json olarak dışa aktar:
+# Yeni verisetini doğrula:
+.\.venv\Scripts\python.exe run_ares.py --validate-dataset .\examples\sample_plug_and_play_dataset.jsonl
+
+# Yerleşik benchmark alias'larıyla çalıştır (quixbugs, agent_green, cleanvul, all_new):
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --dataset quixbugs --exam-dataset cleanvul --turns 10 --exam-interval 5
+```
+
+### 3. Hafıza Export / Import / Merge / Inspect
+```powershell
+# Mevcut hafızayı .zip veya .json olarak dışa aktar:
 .\.venv\Scripts\python.exe run_ares.py --export-only .\memory_store\ares_portable_brain.zip
 
 # Sadece Defender hafızasını dışa aktar:
 .\.venv\Scripts\python.exe run_ares.py --export-only .\memory_store\defender_only.json --export-role defender
 
-# Dışa aktarılmış bir .zip veya .json hafıza paketinin içeriğini incele:
+# Hafıza paketini incele:
 .\.venv\Scripts\python.exe run_ares.py --inspect-memory .\memory_store\ares_portable_brain.zip
-```
 
-### 3. Hafızayı İsteğe Bağlı İçe Aktarma (Import: Replace veya Merge)
-```powershell
-# Dışarıdan bir hafıza paketini mevcut hafızayla BİRLEŞTİR (merge):
+# Mevcut hafızayla birleştir (merge):
 .\.venv\Scripts\python.exe run_ares.py --import-only .\memory_store\ares_portable_brain.zip --import-mode merge
-
-# Kaydedilmiş bir hafızayı yükleyip yeni bir veriseti üzerinde çalıştır ve güncellenmiş hafızayı kaydet:
-.\.venv\Scripts\python.exe run_ares.py --dataset .\examples\sample_plug_and_play_dataset.jsonl --import-memory .\memory_store\ares_portable_brain.zip --import-mode merge --turns 10 --export-memory .\memory_store\updated_brain.zip
 ```
 
-### 4. Python Kod İçinden (SDK) Tak-Çıkar Kullanım
-```python
-from ares.datasets import load_problems
-from ares.memory import CogneeMemoryManager
-from ares.orchestrator import ARESLangGraphOrchestrator
-
-# 1. İstediğiniz verisetini takın (.json, .jsonl, .yaml, .csv)
-custom_problems = load_problems("examples/sample_plug_and_play_dataset.jsonl")
-
-# 2. Hafızayı yükleyin veya birleştirin (replace / merge)
-memory = CogneeMemoryManager(store_dir="memory_store")
-memory.import_portable_bundle("memory_store/ares_portable_brain.zip", mode="merge")
-
-# 3. LangGraph öz-oyununu başlatın
-orchestrator = ARESLangGraphOrchestrator(problems=custom_problems, memory=memory)
-scoreboard = orchestrator.run_self_play(num_turns=10, exam_interval=5)
-
-# 4. İstediğiniz anda hafızayı .zip veya .json olarak dışa aktarın
-memory.export_portable_bundle("memory_store/yeni_hafiza_paketi.zip", role="both")
-```
+### 4. Önemli CLI Seçenekleri
+- `--fresh-memory`: Turn-0 cold-start ölçümü için önceki hafıza deposunu temizler.
+- `--memory-backend {auto,cognee,local_graph}`: Hafıza arka ucu seçimi.
+- `--embedding-provider`, `--embedding-model`, `--embedding-dimensions`, `--cognee-search-type`, `--cognify-interval`: Gerçek Cognee ayarları.
+- `--llm-mode {auto,ollama,openai_compatible,adaptive_local}`, `--base-url`, `--api-key`, `--llm-timeout`, `--num-ctx`: LLM sağlayıcı ve bağlam penceresi ayarları.
+- `--strict-llm`, `--blind-attacker`, `--blind-defender`: Bilimsel değerlendirme ve kapalı-kutu test ayarları.

@@ -96,7 +96,9 @@ _NODE_HELPER_HEADER = """class Node:
 """
 
 
-def _make_tests(fn_name: str, pairs: list[tuple[str, Any]]) -> list[UnitTestCase]:
+def _make_tests(
+    fn_name: str, pairs: list[tuple[str, Any]], setup_code: str = ""
+) -> list[UnitTestCase]:
     """Build 5 normalized UnitTestCase objects from (call_expr, expected_output) pairs."""
     return [
         UnitTestCase(
@@ -105,9 +107,34 @@ def _make_tests(fn_name: str, pairs: list[tuple[str, Any]]) -> list[UnitTestCase
             call_expr=call_expr,
             expected_output=expected,
             is_edge_case=(idx >= 4),
+            setup_code=setup_code,
         )
         for idx, (call_expr, expected) in enumerate(pairs[:5], start=1)
     ]
+
+
+def _strip_trailing_doc_blocks(code: str) -> str:
+    """Remove standalone top-level string-literal blocks (e.g., QuixBugs alternative comment dumps)."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code.strip() + "\n"
+
+    lines = code.splitlines()
+    kept_segments: list[str] = []
+    for stmt in tree.body:
+        if (
+            isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
+            continue
+        start = stmt.lineno - 1
+        end = getattr(stmt, "end_lineno", stmt.lineno)
+        kept_segments.append("\n".join(lines[start:end]))
+
+    cleaned = "\n\n".join(seg for seg in kept_segments if seg.strip()).strip()
+    return (cleaned if cleaned else code.strip()) + "\n"
 
 
 def _extract_functions_from_file(py_path: Path, func_names: set[str], preamble: str = "") -> dict[str, str]:
@@ -145,11 +172,17 @@ def load_quixbugs_suite() -> list[CodeProblem]:
         py_file = correct_dir / f"{prog_name}.py"
         if not py_file.exists():
             continue
-        code = py_file.read_text(encoding="utf-8").strip() + "\n"
+        code = _strip_trailing_doc_blocks(py_file.read_text(encoding="utf-8"))
         raw_pairs: list[tuple[list[Any], Any]] = []
         for line in json_file.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 arr = json.loads(line)
+                # Skip upstream QuixBugs 50-char exponential blowup case in naive recursive levenshtein
+                if prog_name == "levenshtein" and len(str(arr[0][1])) > 20:
+                    continue
+                # Skip odd-x QuixBugs sqrt cases whose JSON expected value came from Python 2 integer `x / 2`
+                if prog_name == "sqrt" and isinstance(arr[0][0], int) and arr[0][0] % 2 != 0:
+                    continue
                 raw_pairs.append((arr[0], arr[1]))
         if prog_name in extra_pads:
             raw_pairs.extend(extra_pads[prog_name])
@@ -285,8 +318,8 @@ def load_quixbugs_suite() -> list[CodeProblem]:
         py_file = correct_dir / f"{prog_name}.py"
         if not py_file.exists():
             continue
-        raw_code = py_file.read_text(encoding="utf-8").strip()
-        full_code = (_NODE_HELPER_HEADER + "\n\n" + raw_code + "\n") if needs_node else (raw_code + "\n")
+        raw_code = _strip_trailing_doc_blocks(py_file.read_text(encoding="utf-8")).strip()
+        setup_code = _NODE_HELPER_HEADER if needs_node else ""
         problems.append(
             CodeProblem(
                 problem_id=f"QUIX-{base_idx + offset:03d}",
@@ -294,8 +327,8 @@ def load_quixbugs_suite() -> list[CodeProblem]:
                 mlcq_category="QuixBugs Graph & Linked Structure Suite",
                 function_name=prog_name,
                 description=f"Clean reference implementation of `{prog_name}` from QuixBugs.",
-                clean_code=full_code,
-                test_cases=_make_tests(prog_name, call_pairs),
+                clean_code=raw_code + "\n",
+                test_cases=_make_tests(prog_name, call_pairs, setup_code=setup_code),
             )
         )
 
@@ -461,7 +494,7 @@ def load_agent_green_suite() -> list[CodeProblem]:
             [
                 ("extract_code_from_response('```python\\ndef add(a, b):\\n    return a + b\\n```')", "def add(a, b):\n    return a + b"),
                 ("extract_code_from_response('<think>reasoning</think>```python\\ndef f(): pass\\n```')", "def f(): pass"),
-                ("extract_code_from_response('```\\npython\\ndef g(): return 1\\n```')", "def g(): return 1"),
+                ("extract_code_from_response('```py\\ndef g(): return 1\\n```')", "def g(): return 1"),
                 ("extract_code_from_response('Here is the solution:\\ndef h(x):\\n    return x')", "def h(x):\n    return x"),
                 ("extract_code_from_response('')", ""),
             ],
@@ -526,7 +559,7 @@ def load_cleanvul_suite() -> list[CodeProblem]:
         "OUTER_CAPTURE_GROUP = 'outer'\n"
         "AFTER_CAPTURE_GROUP = 'after'\n\n"
         "def prepare_linkifier_pattern(source: str) -> str:\n"
-        '    return fr"""(?P<{BEFORE_CAPTURE_GROUP}>^|\\s|[\'\\"\\(,:<])(?P<{OUTER_CAPTURE_GROUP}>{source})(?P<{AFTER_CAPTURE_GROUP}>$|[^\\pL\\pN])"""\n'
+        '    return fr"""(?P<{BEFORE_CAPTURE_GROUP}>^|\\s|[\'"\\(,:<])(?P<{OUTER_CAPTURE_GROUP}>{source})(?P<{AFTER_CAPTURE_GROUP}>$|[^\\pL\\pN])"""\n'
     )
 
     escape_link_code = (

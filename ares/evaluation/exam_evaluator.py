@@ -62,13 +62,41 @@ class ExternalExamEvaluator:
             total_broken_by_attacker += att_suite.failed_count
 
             # Part B: Evaluate Defender's ability to classify & repair the canonical subtle defect
+            canonical_mut = None
             if problem.candidate_mutations:
                 canonical_mut = problem.candidate_mutations[0]
             else:
                 from ares.agents.ast_mutator import ASTSurgicalMutator
-                canonical_mut = ASTSurgicalMutator.generate_candidates(
+                from ares.models import CandidateMutation
+
+                cands = ASTSurgicalMutator.generate_candidates(
                     problem.clean_code, problem.function_name
-                )[0]
+                )
+                for cand in cands:
+                    cand_suite = self.referee.execute_test_suite(
+                        cand.mutated_code, problem.test_cases
+                    )
+                    if (
+                        cand_suite.syntax_valid
+                        and not cand_suite.timed_out
+                        and self.referee.min_broken_tests
+                        <= cand_suite.failed_count
+                        <= self.referee.max_broken_tests
+                    ):
+                        canonical_mut = cand
+                        break
+                if canonical_mut is None and cands:
+                    canonical_mut = cands[0]
+                if canonical_mut is None:
+                    canonical_mut = CandidateMutation(
+                        mutation_id="EXAM_FALLBACK_MUT",
+                        defect_type=att_out.injected_defect_type,
+                        strategy_name=att_out.attack_strategy,
+                        targeted_edge_case=att_out.targeted_edge_case,
+                        mutated_code=att_out.mutated_code,
+                        explanation=att_out.explanation,
+                        expected_broken_count=max(1, att_suite.failed_count),
+                    )
             canonical_suite = self.referee.execute_test_suite(
                 canonical_mut.mutated_code, problem.test_cases
             )
@@ -100,11 +128,13 @@ class ExternalExamEvaluator:
                     "title": problem.title,
                     "attacker_broken_tests": att_suite.failed_count,
                     "attacker_valid_subtle": is_valid_subtle,
+                    "attacker_used_llm": att_out.used_llm,
                     "ground_truth_defect": canonical_mut.defect_type,
                     "defender_predicted_defect": def_out.predicted_defect_type,
                     "defender_classification_correct": classified_ok,
                     "defender_repaired_all_5_tests": repaired_all,
                     "defender_passed_tests": f"{def_suite.passed_count}/{def_suite.total_tests}",
+                    "defender_used_llm": def_out.used_llm,
                     "defense_strategy": def_out.defense_strategy,
                 }
             )

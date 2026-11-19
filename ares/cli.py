@@ -7,14 +7,19 @@ and on-demand Cognee Portable Memory export/import/merge/inspection (`.json` and
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
+import shutil
+from typing import Any
+import yaml
 from rich.console import Console
+from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
 from ares.agents.attacker import AttackerAgent
 from ares.agents.defender import DefenderAgent
-from ares.agents.llm_client import LocalLLMClient
+from ares.agents.llm_client import LocalLLMClient, infer_llm_provider
 from ares.datasets.adapter import PlugAndPlayDatasetAdapter
 from ares.datasets.loader import load_problems
 from ares.memory.cognee_memory import CogneeMemoryManager
@@ -24,25 +29,91 @@ from ares.referee.deterministic_referee import DeterministicReferee
 
 
 console = Console()
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "game_config.yaml"
 
 
-def build_parser() -> argparse.ArgumentParser:
+def load_game_config(config_path: str | Path | None = None) -> dict[str, Any]:
+    """Load YAML game configuration (`configs/game_config.yaml`) with graceful empty fallback."""
+    target = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    if not target.exists():
+        return {}
+    loaded = yaml.safe_load(target.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _configure_logging(verbose: bool = False) -> None:
+    """Attach a RichHandler so warnings from LocalLLMClient and RealCogneeEngine are always visible."""
+    level = logging.INFO if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        handlers=[RichHandler(console=console, show_path=False, rich_tracebacks=False)],
+        force=True,
+    )
+
+
+_KNOWN_EMBEDDING_DIMS: dict[str, int] = {
+    "text-embedding-3-small": 1536,
+    "text-embedding-ada-002": 1536,
+    "text-embedding-3-large": 3072,
+    "nomic-embed-text": 768,
+    "bge-m3": 1024,
+    "mxbai-embed-large": 1024,
+    "all-minilm": 384,
+}
+
+
+def _resolve_embedding_dimensions(
+    explicit_dims: int | None,
+    embedding_model: str,
+    yaml_default: int = 768,
+) -> int:
+    """Resolve embedding dimensions: CLI flag > known model dimension > YAML default."""
+    if explicit_dims is not None:
+        return int(explicit_dims)
+    base = embedding_model.split(":")[0].strip().lower()
+    for prefix, dim in _KNOWN_EMBEDDING_DIMS.items():
+        if base == prefix or base.endswith("/" + prefix):
+            return dim
+    return int(yaml_default)
+
+
+def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
+    cfg = cfg or {}
+    sp_cfg = cfg.get("self_play", {})
+    mem_cfg = cfg.get("memory", {})
+    llm_cfg = cfg.get("llm", {})
+    att_llm_cfg = llm_cfg.get("attacker_model", {})
+    def_llm_cfg = llm_cfg.get("defender_model", {})
+    log_cfg = cfg.get("logging", {})
+
     parser = argparse.ArgumentParser(
         prog="ares",
         description="ARES: Plug-and-Play Adversarial Self-Play for Software Analysis (LangGraph + Cognee + Deterministic Referee)",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=str(DEFAULT_CONFIG_PATH),
+        help="Path to game_config.yaml (CLI flags override YAML defaults)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable INFO-level diagnostic logging",
     )
     # Self-Play & Exam Controls
     parser.add_argument(
         "--turns",
         type=int,
-        default=25,
-        help="Number of adversarial self-play turns to execute (default: 25)",
+        default=int(sp_cfg.get("default_turns", 25)),
+        help="Number of adversarial self-play turns to execute (default from game_config.yaml)",
     )
     parser.add_argument(
         "--exam-interval",
         type=int,
-        default=25,
-        help="Run external benchmark exam ('Dışarıdan Sınav') every N turns (default: 25)",
+        default=int(sp_cfg.get("exam_interval", 25)),
+        help="Run external benchmark exam ('Dışarıdan Sınav') every N turns",
     )
 
     # Plug-and-Play Dataset Controls
@@ -50,33 +121,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--dataset",
         type=str,
         default=None,
-        help="Path to ANY custom self-play dataset (.json, .jsonl, .yaml, .csv) to plug into the arena",
+        help="Custom dataset path (.json, .jsonl, .yaml, .csv) or suite alias (quixbugs, agent_green, cleanvul, all_new)",
     )
     parser.add_argument(
         "--exam-dataset",
         type=str,
         default=None,
-        help="Path to ANY custom external exam dataset (.json, .jsonl, .yaml, .csv) for periodic evaluation",
+        help="Custom external exam dataset path or suite alias (quixbugs, agent_green, cleanvul, all_new)",
     )
     parser.add_argument(
         "--validate-dataset",
         type=str,
         default=None,
-        help="Validate and inspect a custom dataset file (.json, .jsonl, .yaml, .csv) on demand and exit",
+        help="Validate and inspect a custom dataset file or suite alias on demand and exit",
     )
 
     # On-Demand Portable Memory Export / Import / Merge / Inspect Controls
     parser.add_argument(
         "--memory-dir",
         type=str,
-        default="memory_store",
-        help="Directory for active portable Cognee Knowledge Graph & SQLite store",
+        default=str(mem_cfg.get("portable_store_dir", "memory_store")),
+        help="Directory for active memory store",
     )
     parser.add_argument(
         "--import-memory",
         type=str,
         default=None,
-        help="Path to a portable Cognee bundle (.json or .zip) to import before running self-play",
+        help="Path to a portable memory bundle (.json or .zip) to import before running self-play",
     )
     parser.add_argument(
         "--import-mode",
@@ -88,7 +159,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--export-memory",
         type=str,
         default=None,
-        help="Path (.json or .zip) to export the portable Cognee memory bundle after self-play",
+        help="Path (.json or .zip) to export the portable memory bundle after self-play",
     )
     parser.add_argument(
         "--export-role",
@@ -112,53 +183,115 @@ def build_parser() -> argparse.ArgumentParser:
         "--inspect-memory",
         type=str,
         default=None,
-        help="Inspect any exported .json or .zip Cognee memory bundle and display its contents",
+        help="Inspect any exported .json or .zip memory bundle and display its contents",
     )
     parser.add_argument(
         "--fresh-memory",
         action="store_true",
-        help="Start with a clean Cognee memory store to observe full cold-start to Turn-N learning curve",
+        help="Start with a clean memory store to observe full cold-start to Turn-N learning curve",
     )
 
     # Local LLM Controls
     parser.add_argument(
         "--llm-mode",
         choices=["auto", "ollama", "openai_compatible", "adaptive_local"],
-        default="auto",
-        help="Local LLM execution mode (default: auto)",
+        default=str(llm_cfg.get("mode", "auto")),
+        help="Local LLM execution mode (default from game_config.yaml)",
     )
     parser.add_argument(
         "--attacker-model",
         type=str,
-        default="qwen2.5-coder:7b",
+        default=str(att_llm_cfg.get("model_name", "qwen2.5-coder:7b")),
         help="Local model name for Attacker Agent",
     )
     parser.add_argument(
         "--defender-model",
         type=str,
-        default="qwen2.5-coder:7b",
+        default=str(def_llm_cfg.get("model_name", "qwen2.5-coder:7b")),
         help="Local model name for Defender Agent",
     )
     parser.add_argument(
         "--base-url",
         type=str,
-        default="http://localhost:11434",
-        help="Base URL for Ollama or OpenAI-compatible local LLM server",
+        default=str(att_llm_cfg.get("base_url", "http://localhost:11434")),
+        help="Base URL for Ollama or ANY OpenAI-compatible server (LM Studio, vLLM, llama.cpp, OpenAI, OpenRouter, Groq, Gemini)",
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="Optional Bearer API key for hosted/authenticated OpenAI-compatible endpoints (or set LLM_API_KEY / OPENAI_API_KEY)",
+    )
+    parser.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=float(llm_cfg.get("timeout_seconds", 60.0)),
+        help="HTTP timeout in seconds for each LLM call (default from game_config.yaml: 60.0)",
+    )
+    parser.add_argument(
+        "--num-ctx",
+        type=int,
+        default=int(llm_cfg.get("num_ctx", 8192)),
+        help="Ollama context window size `num_ctx` to prevent system-prompt truncation (default: 8192)",
     )
     parser.add_argument(
         "--blind-attacker",
         action="store_true",
+        default=bool(sp_cfg.get("blind_attacker", False)),
         help="Hide unit test cases from the Attacker Agent prompt (blind black-box attack mode)",
     )
     parser.add_argument(
         "--blind-defender",
         action="store_true",
+        default=bool(sp_cfg.get("blind_defender", False)),
         help="Hide failing unit test details from the Defender Agent prompt (blind specification-driven repair mode)",
+    )
+    parser.add_argument(
+        "--strict-llm",
+        action="store_true",
+        default=bool(sp_cfg.get("strict_llm", False)),
+        help="Disable heuristic AST fallbacks so every turn measures pure Local LLM performance",
+    )
+    parser.add_argument(
+        "--memory-backend",
+        choices=["auto", "cognee", "local_graph"],
+        default=str(mem_cfg.get("backend", "auto")),
+        help="Memory engine: 'cognee' (strict real Cognee SDK), 'local_graph' (honest local SQLite+AST/Diff), or 'auto'",
+    )
+    parser.add_argument(
+        "--embedding-provider",
+        type=str,
+        default=mem_cfg.get("cognee_embedding_provider"),
+        help="Optional embedding provider override for Cognee (e.g. 'ollama' or 'openai')",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default=str(mem_cfg.get("cognee_embedding_model", "nomic-embed-text")),
+        help="Embedding model for real Cognee SDK (e.g. 'nomic-embed-text', 'text-embedding-3-small')",
+    )
+    parser.add_argument(
+        "--embedding-dimensions",
+        type=int,
+        default=None,
+        help="Optional embedding vector dimensions override (auto-inferred for common models, else YAML default 768)",
+    )
+    parser.add_argument(
+        "--cognee-search-type",
+        choices=["CHUNKS", "GRAPH_COMPLETION", "SUMMARIES"],
+        default=str(mem_cfg.get("cognee_search_type", "CHUNKS")),
+        help="SearchType used when querying real Cognee memory",
+    )
+    parser.add_argument(
+        "--cognify-interval",
+        type=int,
+        default=int(mem_cfg.get("cognify_interval", 1)),
+        help="Run batched cognee.cognify() every N turns (default: 1; increase to 3-5 for faster local runs)",
     )
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="outputs",
+        default=str(log_cfg.get("output_dir", "outputs")),
         help="Directory for turn logs, exam results, and scoreboard summary",
     )
     return parser
@@ -196,9 +329,10 @@ def _handle_inspect_memory(bundle_path: str) -> int:
     summ = info.get("summary", {})
     console.print(
         Panel.fit(
-            f"[bold magenta]Cognee Portable Memory Bundle Inspection[/bold magenta]\n"
+            f"[bold magenta]ARES Portable Memory Bundle Inspection[/bold magenta]\n"
             f"• File: `{info['file']}`\n"
-            f"• Schema Version: `{info['schema_version']}` | Role: `{info['exported_role']}` | Exported At: `{info['exported_at']}`\n"
+            f"• Schema Version: `{info['schema_version']}` | Backend: `{info.get('active_backend', 'local_graph')}` | "
+            f"Role: `{info['exported_role']}` | Exported At: `{info['exported_at']}`\n"
             f"• Knowledge Graph Nodes: [bold]{summ.get('total_nodes', 0)}[/bold] | "
             f"Edges: [bold]{summ.get('total_edges', 0)}[/bold] | "
             f"Episodes: [bold]{summ.get('total_episodes', 0)}[/bold]\n"
@@ -224,8 +358,20 @@ def _handle_inspect_memory(bundle_path: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    # Pre-parse `--config` so YAML defaults take effect before full CLI parsing
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=str, default=str(DEFAULT_CONFIG_PATH))
+    pre_args, _ = pre_parser.parse_known_args(argv)
+    game_cfg = load_game_config(pre_args.config)
+
+    parser = build_parser(game_cfg)
     args = parser.parse_args(argv)
+    _configure_logging(verbose=args.verbose)
+
+    sp_cfg = game_cfg.get("self_play", {})
+    ref_cfg = game_cfg.get("referee", {})
+    mem_cfg = game_cfg.get("memory", {})
+    llm_cfg = game_cfg.get("llm", {})
 
     # 1. On-demand Dataset Validation Mode
     if args.validate_dataset:
@@ -240,8 +386,29 @@ def main(argv: list[str] | None = None) -> int:
         for f in memory_dir.glob("*"):
             if f.is_file():
                 f.unlink()
+            elif f.is_dir() and f.name in ("cognee_system", "cognee_data"):
+                shutil.rmtree(f, ignore_errors=True)
 
-    memory = CogneeMemoryManager(store_dir=memory_dir)
+    provider = infer_llm_provider(args.llm_mode, args.base_url, args.api_key)
+    resolved_embed_dims = _resolve_embedding_dimensions(
+        args.embedding_dimensions,
+        args.embedding_model,
+        yaml_default=int(mem_cfg.get("cognee_embedding_dimensions", 768)),
+    )
+    memory = CogneeMemoryManager(
+        store_dir=memory_dir,
+        backend=args.memory_backend,
+        in_context_window=int(sp_cfg.get("in_context_history_window", 6)),
+        llm_provider=provider,
+        llm_model=args.defender_model,
+        llm_endpoint=args.base_url,
+        llm_api_key=args.api_key,
+        embedding_provider=args.embedding_provider,
+        embedding_model=args.embedding_model,
+        embedding_dimensions=resolved_embed_dims,
+        cognee_search_type=args.cognee_search_type,
+        cognify_interval=args.cognify_interval,
+    )
 
     # 3. On-demand Standalone Import Mode
     if args.import_only:
@@ -249,9 +416,9 @@ def main(argv: list[str] | None = None) -> int:
         memory.export_portable_bundle()  # Persist into active memory_store
         console.print(
             Panel.fit(
-                f"[bold green]On-Demand Cognee Memory Import Complete ({args.import_mode.upper()} mode)[/bold green]\n"
+                f"[bold green]On-Demand ARES Memory Import Complete ({args.import_mode.upper()} mode)[/bold green]\n"
                 f"• Source: `{args.import_only}` -> Active Store: `{memory.bundle_path}`\n"
-                f"• Total KG Nodes: [bold]{res['total_nodes']}[/bold] | "
+                f"• Active Backend: `{memory.active_backend}` | Total KG Nodes: [bold]{res['total_nodes']}[/bold] | "
                 f"Edges: [bold]{res['total_edges']}[/bold] | "
                 f"Episodes: [bold]{res['total_episodes']}[/bold]\n"
                 f"• Learned Defect Types: `{res['learned_defect_types']}`",
@@ -267,8 +434,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         console.print(
             Panel.fit(
-                f"[bold cyan]On-Demand Cognee Memory Export Complete[/bold cyan]\n"
-                f"• Exported To: `{out_file}` (Role: `{args.export_role}`)\n"
+                f"[bold cyan]On-Demand ARES Memory Export Complete[/bold cyan]\n"
+                f"• Exported To: `{out_file}` (Role: `{args.export_role}` | Backend: `{memory.active_backend}`)\n"
                 f"• Total KG Nodes: [bold]{len(memory.nodes)}[/bold] | "
                 f"Edges: [bold]{len(memory.edges)}[/bold] | "
                 f"Episodes: [bold]{len(memory.episodes)}[/bold]",
@@ -283,38 +450,81 @@ def main(argv: list[str] | None = None) -> int:
             args.import_memory, mode=args.import_mode
         )
         console.print(
-            f"[bold cyan]Imported portable Cognee memory bundle ({args.import_mode}):[/bold cyan] {summary_loaded}"
+            f"[bold cyan]Imported portable ARES memory bundle ({args.import_mode}):[/bold cyan] {summary_loaded}"
+        )
+    elif not args.fresh_memory and memory.loaded_preexisting_episodes > 0:
+        console.print(
+            f"[bold yellow]WARNING:[/bold yellow] Loaded {memory.loaded_preexisting_episodes} pre-existing "
+            f"episode(s) from `{memory.bundle_path}` (schema={memory.migrated_legacy_schema or 'current'}). "
+            f"Turn-0 baseline is NOT a cold start — pass `--fresh-memory` for a clean baseline experiment."
         )
 
-    provider = "openai_compatible" if args.llm_mode == "openai_compatible" else "ollama"
     attacker_llm = LocalLLMClient(
         provider=provider,
         model_name=args.attacker_model,
         base_url=args.base_url,
-        temperature=0.7,
+        temperature=float(llm_cfg.get("attacker_model", {}).get("temperature", 0.7)),
         mode=args.llm_mode,
+        timeout_seconds=args.llm_timeout,
+        api_key=args.api_key,
+        num_ctx=args.num_ctx,
     )
     defender_llm = LocalLLMClient(
         provider=provider,
         model_name=args.defender_model,
         base_url=args.base_url,
-        temperature=0.2,
+        temperature=float(llm_cfg.get("defender_model", {}).get("temperature", 0.2)),
         mode=args.llm_mode,
+        timeout_seconds=args.llm_timeout,
+        api_key=args.api_key,
+        num_ctx=args.num_ctx,
     )
 
-    attacker = AttackerAgent(llm_client=attacker_llm, blind_mode=args.blind_attacker)
-    defender = DefenderAgent(llm_client=defender_llm, blind_mode=args.blind_defender)
-    referee = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
+    attacker = AttackerAgent(
+        llm_client=attacker_llm,
+        blind_mode=args.blind_attacker,
+        strict_llm=args.strict_llm,
+    )
+    defender = DefenderAgent(
+        llm_client=defender_llm,
+        blind_mode=args.blind_defender,
+        strict_llm=args.strict_llm,
+    )
+    referee = DeterministicReferee(
+        min_broken_tests=int(ref_cfg.get("min_broken_tests_for_valid_attack", 1)),
+        max_broken_tests=int(ref_cfg.get("max_broken_tests_for_valid_attack", 2)),
+        timeout_seconds=float(ref_cfg.get("execution_timeout_seconds", 3.0)),
+        elo_k_factor=float(sp_cfg.get("elo_k_factor", 32.0)),
+    )
 
     problems = load_problems(path=args.dataset, exam=False)
     exam_problems = load_problems(path=args.exam_dataset, exam=True)
 
+    arena_ids = {p.problem_id for p in problems}
+    arena_fns = {p.function_name for p in problems}
+    overlap_ids = sorted(arena_ids & {p.problem_id for p in exam_problems})
+    overlap_fns = sorted(arena_fns & {p.function_name for p in exam_problems})
+    if overlap_ids or overlap_fns:
+        console.print(
+            f"[bold yellow]WARNING:[/bold yellow] Arena dataset and External Exam suite overlap "
+            f"(problem_ids={overlap_ids[:5]}, functions={overlap_fns[:5]}). "
+            f"Pass a disjoint `--exam-dataset` for strict unseen generalization measurement."
+        )
+
+    backend_badge = (
+        "[bold green]REAL COGNEE SDK (add/cognify/search)[/bold green]"
+        if memory.active_backend == "cognee"
+        else "[bold yellow]LOCAL EPISODIC GRAPH (SQLite + AST/Diff)[/bold yellow]"
+    )
+
     console.print(
         Panel.fit(
             f"[bold gold1]ARES: Plug-and-Play Adversarial Self-Play for Software Analysis[/bold gold1]\n"
-            f"Orchestrator: [bold green]LangGraph StateGraph[/bold green] | "
-            f"Memory: [bold magenta]Cognee Portable Knowledge Graph[/bold magenta] | "
-            f"Referee: [bold cyan]100% Deterministic (1-2/5 Broken Test Rule)[/bold cyan]\n"
+            f"Orchestrator: [bold green]Real LangGraph StateGraph + MemorySaver[/bold green] | "
+            f"Memory Backend: {backend_badge}\n"
+            f"Memory Status: [dim]{memory.backend_status_reason}[/dim]\n"
+            f"Referee: [bold cyan]100% Deterministic Subprocess-Isolated (1-2 Broken Rule)[/bold cyan] | "
+            f"Strict LLM: [bold]{'ON' if args.strict_llm else 'OFF'}[/bold]\n"
             f"Turns: [bold]{args.turns}[/bold] | External Exam Interval: [bold]{args.exam_interval}[/bold] | "
             f"Blind Mode: Attacker=[bold]{'ON' if args.blind_attacker else 'OFF'}[/bold], "
             f"Defender=[bold]{'ON' if args.blind_defender else 'OFF'}[/bold]\n"
@@ -395,7 +605,7 @@ def main(argv: list[str] | None = None) -> int:
             args.export_memory, role=args.export_role
         )
         console.print(
-            f"[bold green]Exported portable Cognee memory bundle ({args.export_role}) to:[/bold green] {exported_path}"
+            f"[bold green]Exported portable ARES memory bundle ({args.export_role}) to:[/bold green] {exported_path}"
         )
 
     console.print(turn_table)
@@ -406,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     exam_table.add_column("Exam ID", style="bold")
     exam_table.add_column("After Turn", justify="right")
-    exam_table.add_column("Cognee KG Nodes", justify="right")
+    exam_table.add_column("Memory KG Nodes", justify="right")
     exam_table.add_column("Attacker Valid 1-2 Broken (%)", justify="right")
     exam_table.add_column("Defender Full Repair (%)", justify="right")
     exam_table.add_column("Defender Classification (%)", justify="right")
@@ -425,6 +635,8 @@ def main(argv: list[str] | None = None) -> int:
     console.print(exam_table)
 
     imp = scoreboard.get("external_exam_improvement", {})
+    mem_sys = scoreboard.get("memory_system", scoreboard["cognee_portable_memory"])
+    llm_m = scoreboard.get("llm_usage_metrics", {})
     console.print(
         Panel.fit(
             f"[bold green]Self-Play & External Exam Summary[/bold green]\n"
@@ -433,10 +645,14 @@ def main(argv: list[str] | None = None) -> int:
             f"Draws = {scoreboard['draws']}\n"
             f"• Final ELO Ratings: Attacker = [bold]{scoreboard['attacker_final_elo']}[/bold] | "
             f"Defender = [bold]{scoreboard['defender_final_elo']}[/bold]\n"
-            f"• Portable Cognee Memory: [bold]{scoreboard['cognee_portable_memory']['total_nodes']} KG nodes[/bold], "
-            f"[bold]{scoreboard['cognee_portable_memory']['total_edges']} edges[/bold], "
-            f"[bold]{scoreboard['cognee_portable_memory']['total_episodes']} episodes[/bold]\n"
-            f"  Bundle saved at: `{scoreboard['cognee_portable_memory']['bundle_path']}`\n"
+            f"• Real LLM Usage: Attacker = [bold]{llm_m.get('attacker_llm_rate_pct', 0.0)}%[/bold] | "
+            f"Defender = [bold]{llm_m.get('defender_llm_rate_pct', 0.0)}%[/bold]\n"
+            f"• Active Memory Backend: [bold magenta]{mem_sys.get('active_backend', 'local_graph').upper()}[/bold magenta] "
+            f"(Real Cognee Ingests={mem_sys.get('cognee_ingested_turns', 0)}, Searches={mem_sys.get('cognee_search_calls', 0)})\n"
+            f"• Graph & Episodic Store: [bold]{mem_sys['total_nodes']} KG nodes[/bold], "
+            f"[bold]{mem_sys['total_edges']} edges[/bold], "
+            f"[bold]{mem_sys['total_episodes']} episodes[/bold]\n"
+            f"  Bundle saved at: `{mem_sys['bundle_path']}`\n"
             f"• External Exam Delta (Turn {imp.get('baseline_turn', 0)} -> Turn {imp.get('final_turn', args.turns)}):\n"
             f"  - Attacker Valid Subtle Attack Rate Delta: [bold cyan]{imp.get('attacker_valid_subtle_rate_delta', 0.0):+.2f}%[/bold cyan]\n"
             f"  - Defender Full Repair Rate Delta:         [bold green]{imp.get('defender_full_repair_rate_delta', 0.0):+.2f}%[/bold green]\n"

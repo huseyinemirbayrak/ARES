@@ -24,6 +24,16 @@ class ASTSurgicalMutator:
         ast.Gt: (ast.GtE, "Changed `>` to inclusive `>=` boundary"),
     }
 
+    @staticmethod
+    def _resolve_scope(tree: ast.AST, function_name: str | None) -> ast.AST:
+        """Return the target FunctionDef subtree when `function_name` is found, else full module."""
+        if not function_name:
+            return tree
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                return node
+        return tree
+
     @classmethod
     def generate_candidates(
         cls, clean_code: str, function_name: str | None = None
@@ -34,51 +44,65 @@ class ASTSurgicalMutator:
         except SyntaxError:
             return []
 
+        scope = cls._resolve_scope(tree, function_name)
+        candidates = cls._generate_for_scope(clean_code, tree, scope, function_name)
+        # If target function is a thin wrapper (no mutable AST sites), fall back to full module
+        if not candidates and scope is not tree:
+            candidates = cls._generate_for_scope(clean_code, tree, tree, None)
+        return candidates
+
+    @classmethod
+    def _generate_for_scope(
+        cls,
+        clean_code: str,
+        tree: ast.AST,
+        scope: ast.AST,
+        function_name: str | None,
+    ) -> list[CandidateMutation]:
         candidates: list[CandidateMutation] = []
         mut_idx = 1
 
         # 1. Empty / Singleton Guard Mutations (`if not x:` -> `if len(x) <= 1:`)
-        for node_idx, node in enumerate(ast.walk(tree)):
-            if isinstance(node, ast.If):
-                # Pattern: `if not <name>:`
-                if (
-                    isinstance(node.test, ast.UnaryOp)
-                    and isinstance(node.test.op, ast.Not)
-                    and isinstance(node.test.operand, ast.Name)
-                ):
-                    var_name = node.test.operand.id
-                    tree_copy = copy.deepcopy(tree)
-                    target_if = [
-                        n for n in ast.walk(tree_copy) if isinstance(n, ast.If)
-                    ][
-                        [n for n in ast.walk(tree) if isinstance(n, ast.If)].index(node)
-                    ]
-                    target_if.test = ast.Compare(
-                        left=ast.Call(
-                            func=ast.Name(id="len", ctx=ast.Load()),
-                            args=[ast.Name(id=var_name, ctx=ast.Load())],
-                            keywords=[],
-                        ),
-                        ops=[ast.LtE()],
-                        comparators=[ast.Constant(value=1)],
+        if_nodes = [n for n in ast.walk(scope) if isinstance(n, ast.If)]
+        for idx_if, node in enumerate(if_nodes):
+            # Pattern: `if not <name>:`
+            if (
+                isinstance(node.test, ast.UnaryOp)
+                and isinstance(node.test.op, ast.Not)
+                and isinstance(node.test.operand, ast.Name)
+            ):
+                var_name = node.test.operand.id
+                tree_copy = copy.deepcopy(tree)
+                scope_copy = cls._resolve_scope(tree_copy, function_name)
+                target_if = [
+                    n for n in ast.walk(scope_copy) if isinstance(n, ast.If)
+                ][idx_if]
+                target_if.test = ast.Compare(
+                    left=ast.Call(
+                        func=ast.Name(id="len", ctx=ast.Load()),
+                        args=[ast.Name(id=var_name, ctx=ast.Load())],
+                        keywords=[],
+                    ),
+                    ops=[ast.LtE()],
+                    comparators=[ast.Constant(value=1)],
+                )
+                ast.fix_missing_locations(tree_copy)
+                mut_code = ast.unparse(tree_copy) + "\n"
+                candidates.append(
+                    CandidateMutation(
+                        mutation_id=f"AST_MUT_{mut_idx:03d}_SINGLETON",
+                        defect_type="empty_or_singleton_debt",
+                        strategy_name=f"Singleton guard shift (`len({var_name}) <= 1`)",
+                        targeted_edge_case=f"Single-element input for `{var_name}`",
+                        mutated_code=mut_code,
+                        explanation=f"Replaced `if not {var_name}:` with `if len({var_name}) <= 1:`, breaking singleton inputs while normal multi-element inputs pass.",
+                        expected_broken_count=1,
                     )
-                    ast.fix_missing_locations(tree_copy)
-                    mut_code = ast.unparse(tree_copy) + "\n"
-                    candidates.append(
-                        CandidateMutation(
-                            mutation_id=f"AST_MUT_{mut_idx:03d}_SINGLETON",
-                            defect_type="empty_or_singleton_debt",
-                            strategy_name=f"Singleton guard shift (`len({var_name}) <= 1`)",
-                            targeted_edge_case=f"Single-element input for `{var_name}`",
-                            mutated_code=mut_code,
-                            explanation=f"Replaced `if not {var_name}:` with `if len({var_name}) <= 1:`, breaking singleton inputs while normal multi-element inputs pass.",
-                            expected_broken_count=1,
-                        )
-                    )
-                    mut_idx += 1
+                )
+                mut_idx += 1
 
         # 2. Negative / Zero Initialization Debt (`acc = seq[0]` -> `acc = max(0, seq[0])`)
-        assign_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.Assign)]
+        assign_nodes = [n for n in ast.walk(scope) if isinstance(n, ast.Assign)]
         for idx_a, node in enumerate(assign_nodes):
             if (
                 len(node.targets) == 1
@@ -89,8 +113,9 @@ class ASTSurgicalMutator:
             ):
                 var_name = node.targets[0].id
                 tree_copy = copy.deepcopy(tree)
+                scope_copy = cls._resolve_scope(tree_copy, function_name)
                 target_assign = [
-                    n for n in ast.walk(tree_copy) if isinstance(n, ast.Assign)
+                    n for n in ast.walk(scope_copy) if isinstance(n, ast.Assign)
                 ][idx_a]
                 orig_sub = copy.deepcopy(target_assign.value)
                 target_assign.value = ast.Call(
@@ -115,13 +140,14 @@ class ASTSurgicalMutator:
                 break
 
         # 3. Off-By-One Comparator Mutations (`<=` <-> `<`, `>=` <-> `>`)
-        compare_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.Compare)]
+        compare_nodes = [n for n in ast.walk(scope) if isinstance(n, ast.Compare)]
         for idx_c, node in enumerate(compare_nodes):
             if len(node.ops) == 1 and type(node.ops[0]) in cls.ComparatorSwaps:
                 new_op_cls, desc = cls.ComparatorSwaps[type(node.ops[0])]
                 tree_copy = copy.deepcopy(tree)
+                scope_copy = cls._resolve_scope(tree_copy, function_name)
                 target_cmp = [
-                    n for n in ast.walk(tree_copy) if isinstance(n, ast.Compare)
+                    n for n in ast.walk(scope_copy) if isinstance(n, ast.Compare)
                 ][idx_c]
                 target_cmp.ops[0] = new_op_cls()
                 ast.fix_missing_locations(tree_copy)
@@ -140,7 +166,7 @@ class ASTSurgicalMutator:
                 mut_idx += 1
 
         # 4. Precision / Rounding Mutations (`round(x, 2)` -> `round(x, 1)`)
-        call_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+        call_nodes = [n for n in ast.walk(scope) if isinstance(n, ast.Call)]
         for idx_call, node in enumerate(call_nodes):
             if (
                 isinstance(node.func, ast.Name)
@@ -151,8 +177,9 @@ class ASTSurgicalMutator:
                 and node.args[1].value >= 2
             ):
                 tree_copy = copy.deepcopy(tree)
+                scope_copy = cls._resolve_scope(tree_copy, function_name)
                 target_call = [
-                    n for n in ast.walk(tree_copy) if isinstance(n, ast.Call)
+                    n for n in ast.walk(scope_copy) if isinstance(n, ast.Call)
                 ][idx_call]
                 target_call.args[1] = ast.Constant(value=node.args[1].value - 1)
                 ast.fix_missing_locations(tree_copy)
@@ -192,7 +219,7 @@ class ASTSurgicalMutator:
                 mut_idx += 1
 
         # 6. Off-By-One `+ 1` / `- 1` Window / Index Offset Removal
-        bin_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.BinOp)]
+        bin_nodes = [n for n in ast.walk(scope) if isinstance(n, ast.BinOp)]
         for idx_b, node in enumerate(bin_nodes):
             if (
                 isinstance(node.op, (ast.Add, ast.Sub))
@@ -200,9 +227,10 @@ class ASTSurgicalMutator:
                 and node.right.value == 1
             ):
                 tree_copy = copy.deepcopy(tree)
-                # Replace `expr + 1` or `expr - 1` with `expr` if inside an Assign
+                scope_copy = cls._resolve_scope(tree_copy, function_name)
+                # Replace `expr + 1` or `expr - 1` with `expr`
                 mutated_once = False
-                for parent in ast.walk(tree_copy):
+                for parent in ast.walk(scope_copy):
                     for field, val in ast.iter_fields(parent):
                         if (
                             isinstance(val, ast.BinOp)
