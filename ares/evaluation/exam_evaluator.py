@@ -103,7 +103,7 @@ class ExternalExamEvaluator:
             def_out = defender.defend(
                 problem=problem,
                 mutated_code=canonical_mut.mutated_code,
-                attacker_suite=canonical_suite,
+                attacker_suite=None if defender.hide_test_results else canonical_suite,
                 memory=memory,
                 turn_id=after_turn + idx,
             )

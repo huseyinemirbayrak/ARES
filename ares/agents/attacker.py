@@ -35,12 +35,14 @@ class AttackerAgent:
         blind_mode: bool = False,
         strict_llm: bool = False,
         max_static_retries: int = 1,
+        hide_test_results: bool = False,
     ) -> None:
         self.prompt_config: StructuredPromptConfig = load_prompt_config(prompt_path)
         self.llm_client = llm_client or LocalLLMClient(temperature=0.7)
         self.blind_mode = blind_mode
         self.strict_llm = strict_llm
         self.max_static_retries = max_static_retries
+        self.hide_test_results = hide_test_results
         self._sandbox_checker = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
         self._turn_counter = 0
 
@@ -205,7 +207,7 @@ class AttackerAgent:
         raw_cands = ASTSurgicalMutator.generate_candidates(
             problem.clean_code, problem.function_name
         )
-        if self.blind_mode:
+        if self.blind_mode or self.hide_test_results:
             return raw_cands
 
         verified: list[CandidateMutation] = []

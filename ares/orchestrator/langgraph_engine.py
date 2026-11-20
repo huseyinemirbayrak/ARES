@@ -146,14 +146,15 @@ class ARESLangGraphOrchestrator:
         problem = CodeProblem.model_validate(state["current_problem"])
         att_output = AttackerOutput.model_validate(state["attacker_output"])
         att_suite = SuiteExecutionResult.model_validate(state["attacker_suite_result"])
-        failed_ids = [] if self.defender.blind_mode else att_suite.failed_test_ids
+        hide_results = self.defender.blind_mode or self.defender.hide_test_results
+        failed_ids = [] if hide_results else att_suite.failed_test_ids
         def_mem = self.memory.retrieve_defender_memories(
             problem, att_output.mutated_code, failed_ids
         )
         def_output = self.defender.defend(
             problem=problem,
             mutated_code=att_output.mutated_code,
-            attacker_suite=att_suite,
+            attacker_suite=None if self.defender.hide_test_results else att_suite,
             memory=self.memory,
             turn_id=turn_id,
             memories=def_mem,

@@ -37,38 +37,76 @@ class DefenderAgent:
         blind_mode: bool = False,
         strict_llm: bool = False,
         max_static_retries: int = 1,
+        hide_test_results: bool = False,
     ) -> None:
         self.prompt_config: StructuredPromptConfig = load_prompt_config(prompt_path)
         self.llm_client = llm_client or LocalLLMClient(temperature=0.2)
         self.blind_mode = blind_mode
         self.strict_llm = strict_llm
         self.max_static_retries = max_static_retries
+        self.hide_test_results = hide_test_results
         self._sandbox_checker = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
 
     def build_prompts(
         self,
         problem: CodeProblem,
         mutated_code: str,
-        attacker_suite: SuiteExecutionResult,
+        attacker_suite: SuiteExecutionResult | None,
         memories: list[str],
     ) -> tuple[str, str]:
-        """Build the 5-part system prompt and diagnostic user prompt for the Defender."""
+        """Build the 5-part system prompt and user prompt for the Defender."""
         system_prompt = self.prompt_config.render_system_prompt(
-            memories=memories, blind_mode=self.blind_mode
+            memories=memories,
+            blind_mode=self.blind_mode,
+            hide_test_results=self.hide_test_results,
         )
         ast_features = ", ".join(extract_ast_features(mutated_code))
+        total_tests = len(problem.test_cases)
+
         if self.blind_mode:
+            if self.hide_test_results or attacker_suite is None:
+                code_header = (
+                    f"Code Under Review ({total_tests} hidden deterministic tests — "
+                    f"execution results HIDDEN):"
+                )
+            else:
+                code_header = (
+                    f"Suspected Mutated Code ({attacker_suite.failed_count}/"
+                    f"{attacker_suite.total_tests} hidden tests failing):"
+                )
             user_prompt = (
                 f"Problem ID: {problem.problem_id} ({problem.title})\n"
                 f"MLCQ Category: {problem.mlcq_category}\n"
                 f"AST Structural Patterns: [{ast_features}]\n"
                 f"Function Specification: {problem.description}\n\n"
-                f"Suspected Mutated Code ({attacker_suite.failed_count}/{attacker_suite.total_tests} hidden tests failing):\n"
+                f"{code_header}\n"
                 f"```python\n{mutated_code}```\n\n"
                 f"Failing Unit Test Details: [HIDDEN - BLIND MODE]\n\n"
                 f"Perform static analysis against the Function Specification and apply your retrieved "
                 f"VERIFIED REPAIR PATTERN diffs. Classify the exact defect category and return the fully "
-                f"repaired Python code so all {attacker_suite.total_tests}/{attacker_suite.total_tests} hidden tests pass."
+                f"repaired Python code so all {total_tests}/{total_tests} hidden tests pass."
+            )
+            return system_prompt, user_prompt
+
+        if self.hide_test_results or attacker_suite is None:
+            test_summary = "\n".join(
+                f"  - {tc.test_id}: {tc.call_expr} == {tc.expected_output!r}  # {tc.description}"
+                for tc in problem.test_cases
+            )
+            user_prompt = (
+                f"Problem ID: {problem.problem_id} ({problem.title})\n"
+                f"MLCQ Category: {problem.mlcq_category}\n"
+                f"AST Structural Patterns: [{ast_features}]\n"
+                f"Function Specification: {problem.description}\n\n"
+                f"Code Under Review:\n"
+                f"```python\n{mutated_code}```\n\n"
+                f"Unit Test Suite ({total_tests} deterministic tests — execution results HIDDEN):\n"
+                f"{test_summary}\n\n"
+                f"Test execution results (pass/fail status and errors) are HIDDEN. Trace the code statically "
+                f"against every unit test case above and apply lessons from your retrieved VERIFIED REPAIR "
+                f"PATTERN diffs. Diagnose whether a defect exists, classify the exact defect category "
+                f"(`clean` if no defect), and return the fully repaired Python code so all "
+                f"{total_tests}/{total_tests} unit tests pass."
             )
             return system_prompt, user_prompt
 
@@ -95,20 +133,25 @@ class DefenderAgent:
         self,
         problem: CodeProblem,
         mutated_code: str,
-        attacker_suite: SuiteExecutionResult,
+        attacker_suite: SuiteExecutionResult | None,
         memory: CogneeMemoryManager,
         turn_id: int = 1,
         memories: list[str] | None = None,
     ) -> DefenderOutput:
         """Inspect `mutated_code`, classify the defect, and synthesize `repaired_code`."""
-        failed_ids = [] if self.blind_mode else attacker_suite.failed_test_ids
+        effective_suite = None if self.hide_test_results else attacker_suite
+        failed_ids = (
+            []
+            if (self.blind_mode or effective_suite is None)
+            else effective_suite.failed_test_ids
+        )
         resolved_memories = (
             memories
             if memories is not None
             else memory.retrieve_defender_memories(problem, mutated_code, failed_ids)
         )
         system_prompt, user_prompt = self.build_prompts(
-            problem, mutated_code, attacker_suite, resolved_memories
+            problem, mutated_code, effective_suite, resolved_memories
         )
 
         # 1. Try live Local LLM with static self-correction retry (never executes unit tests!)
@@ -121,16 +164,22 @@ class DefenderAgent:
                     last_reason = self.llm_client.last_error or "Unparseable or empty JSON"
                 else:
                     valid, reason = self._validate_llm_defense_reason(
-                        llm_json, problem, mutated_code, attacker_suite
+                        llm_json, problem, mutated_code, effective_suite
                     )
                     if valid:
+                        raw_is_defective = llm_json.get("is_defective")
+                        default_cat = (
+                            "clean" if raw_is_defective is False else "off_by_one_boundary"
+                        )
                         defect_cat = normalize_defect_category(
                             llm_json.get("predicted_defect_type"),
-                            default="off_by_one_boundary",
+                            default=default_cat,
                         )
                         return DefenderOutput(
                             is_defective=bool(
-                                llm_json.get("is_defective", defect_cat != "clean")
+                                raw_is_defective
+                                if raw_is_defective is not None
+                                else (defect_cat != "clean")
                             ),
                             predicted_defect_type=defect_cat,
                             defect_location_line=safe_int(
@@ -148,12 +197,17 @@ class DefenderAgent:
                     last_reason = reason
 
                 if attempt < self.max_static_retries:
+                    retry_hint = (
+                        f"preserving `def {problem.function_name}` (if you diagnose a defect, actually apply the fix in `repaired_code`; if clean, classify as `clean`)."
+                        if self.hide_test_results
+                        else f"preserving `def {problem.function_name}` and actually fixing the bug."
+                    )
                     current_user_prompt = (
                         f"{user_prompt}\n\n"
                         f"[STATIC VALIDATION CORRECTION REQUIRED]\n"
                         f"Your previous output was rejected because: {last_reason}.\n"
                         f"Return ONLY valid JSON with syntactically valid Python in `repaired_code` "
-                        f"preserving `def {problem.function_name}` and actually fixing the bug."
+                        f"{retry_hint}"
                     )
 
             logger.warning(
@@ -164,8 +218,12 @@ class DefenderAgent:
             )
             if self.strict_llm:
                 return DefenderOutput(
-                    is_defective=(attacker_suite.failed_count > 0),
-                    predicted_defect_type="off_by_one_boundary",
+                    is_defective=(
+                        False
+                        if effective_suite is None
+                        else (effective_suite.failed_count > 0)
+                    ),
+                    predicted_defect_type="clean" if effective_suite is None else "off_by_one_boundary",
                     defect_location_line=1,
                     diagnosis=f"Strict LLM mode active; LLM failed validation: {last_reason}",
                     defense_strategy="LLM strict failure (no heuristic fallback)",
@@ -184,14 +242,14 @@ class DefenderAgent:
             )
 
         # 2. Honest AST Diagnostic & Program Repair Engine (offline / adaptive_local mode)
-        return self._adaptive_defend(problem, mutated_code, attacker_suite, memory)
+        return self._adaptive_defend(problem, mutated_code, effective_suite, memory)
 
     def _validate_llm_defense_reason(
         self,
         payload: dict[str, Any],
         problem: CodeProblem,
         mutated_code: str,
-        attacker_suite: SuiteExecutionResult,
+        attacker_suite: SuiteExecutionResult | None,
     ) -> tuple[bool, str]:
         code = payload.get("repaired_code", "")
         if not isinstance(code, str) or not code.strip():
@@ -206,6 +264,22 @@ class DefenderAgent:
         )
         if not has_fn:
             return False, f"Function definition `def {problem.function_name}` missing in AST"
+        if self.hide_test_results or attacker_suite is None:
+            # Never peek at test execution results; only reject self-contradictory "defective but unchanged" output
+            raw_is_defective = payload.get("is_defective")
+            default_cat = "clean" if raw_is_defective is False else "off_by_one_boundary"
+            claimed_cat = normalize_defect_category(
+                payload.get("predicted_defect_type"), default=default_cat
+            )
+            claimed_defective = bool(
+                raw_is_defective if raw_is_defective is not None else (claimed_cat != "clean")
+            )
+            if claimed_defective and claimed_cat != "clean" and code.strip() == mutated_code.strip():
+                return (
+                    False,
+                    "claimed a defect (`is_defective=true`) but returned `repaired_code` identical to input",
+                )
+            return True, "ok"
         if attacker_suite.failed_count > 0 and code.strip() == mutated_code.strip():
             return False, "repaired_code is identical to defective mutated_code while tests are failing"
         return True, "ok"
@@ -226,10 +300,15 @@ class DefenderAgent:
         )
 
     def _diagnose_defect(
-        self, mutated_code: str, attacker_suite: SuiteExecutionResult
+        self, mutated_code: str, attacker_suite: SuiteExecutionResult | None
     ) -> tuple[DefectCategory, int, str]:
         """Generic AST + pattern analyzer to identify defect category and line number."""
-        if attacker_suite.failed_count == 0 and attacker_suite.syntax_valid:
+        if (
+            not self.hide_test_results
+            and attacker_suite is not None
+            and attacker_suite.failed_count == 0
+            and attacker_suite.syntax_valid
+        ):
             return ("clean", 1, "All unit tests pass; no defect detected.")
 
         lines = mutated_code.splitlines()
@@ -299,6 +378,13 @@ class DefenderAgent:
                 "Missing total capacity pre-check before mutating batch allocations.",
             )
 
+        if self.hide_test_results or attacker_suite is None:
+            return (
+                "clean",
+                1,
+                "No static defect pattern matched without test execution results.",
+            )
+
         return (
             "off_by_one_boundary",
             2,
@@ -341,15 +427,16 @@ class DefenderAgent:
             key=lambda item: (0 if item[1] == predicted_defect else 1),
         )
 
-        # In blind_mode, NEVER execute problem.test_cases to brute-force pick candidates!
-        if self.blind_mode:
+        # In blind_mode or hide_test_results, NEVER execute problem.test_cases to brute-force pick candidates!
+        if self.blind_mode or self.hide_test_results:
             if ordered_candidates:
                 cand_code, cand_defect, cand_desc = ordered_candidates[0]
-                return cand_code, cand_defect, f"[Blind Static AST] {cand_desc}"
+                prefix = "[Blind Static AST]" if self.blind_mode else "[Static AST - No Test Results]"
+                return cand_code, cand_defect, f"{prefix} {cand_desc}"
             return (
                 mutated_code,
                 predicted_defect,
-                "No static AST repair candidate matched in blind mode.",
+                "No static AST repair candidate matched without test execution results.",
             )
 
         for cand_code, cand_defect, cand_desc in ordered_candidates:
@@ -369,7 +456,7 @@ class DefenderAgent:
         self,
         problem: CodeProblem,
         mutated_code: str,
-        attacker_suite: SuiteExecutionResult,
+        attacker_suite: SuiteExecutionResult | None,
         memory: CogneeMemoryManager,
     ) -> DefenderOutput:
         """Diagnose and repair `mutated_code` honestly using AST rules + verified memory."""

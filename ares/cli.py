@@ -245,7 +245,13 @@ def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
         "--blind-defender",
         action=argparse.BooleanOptionalAction,
         default=bool(sp_cfg.get("blind_defender", False)),
-        help="Hide failing unit test details from the Defender Agent prompt (blind specification-driven repair mode)",
+        help="Hide unit test cases from the Defender Agent prompt (blind specification-driven repair mode)",
+    )
+    parser.add_argument(
+        "--hide-test-results",
+        action=argparse.BooleanOptionalAction,
+        default=bool(sp_cfg.get("hide_test_results", True)),
+        help="Show unit test definitions to both agents while hiding test execution pass/fail results (default: enabled)",
     )
     parser.add_argument(
         "--strict-llm",
@@ -563,11 +569,13 @@ def main(argv: list[str] | None = None) -> int:
             llm_client=attacker_llm,
             blind_mode=args.blind_attacker,
             strict_llm=args.strict_llm,
+            hide_test_results=args.hide_test_results,
         )
         defender = DefenderAgent(
             llm_client=defender_llm,
             blind_mode=args.blind_defender,
             strict_llm=args.strict_llm,
+            hide_test_results=args.hide_test_results,
         )
         referee = DeterministicReferee(
             min_broken_tests=int(ref_cfg.get("min_broken_tests_for_valid_attack", 1)),
@@ -613,7 +621,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"Strict LLM: [bold]{'ON' if args.strict_llm else 'OFF'}[/bold]\n"
                 f"Turns: [bold]{args.turns}[/bold] | External Exam Interval: [bold]{args.exam_interval}[/bold] | "
                 f"Blind Mode: Attacker=[bold]{'ON' if args.blind_attacker else 'OFF'}[/bold], "
-                f"Defender=[bold]{'ON' if args.blind_defender else 'OFF'}[/bold]\n"
+                f"Defender=[bold]{'ON' if args.blind_defender else 'OFF'}[/bold] | "
+                f"Test Results Hidden: [bold]{'ON' if args.hide_test_results else 'OFF'}[/bold]\n"
                 f"Arena Dataset: [bold]{len(problems)} problems[/bold] (`{args.dataset or ds_cfg.get('self_play_dataset_path') or 'default MLCQ'}`) | "
                 f"External Exam Suite: [bold]{len(exam_problems)} problems[/bold] (`{args.exam_dataset or ds_cfg.get('external_exam_dataset_path') or 'default Exam'}`)",
                 border_style="gold1",

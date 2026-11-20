@@ -558,21 +558,24 @@ def test_game_config_yaml_loads_into_cli_parser() -> None:
     assert args.num_ctx == 8192
     assert args.llm_timeout == 60.0
     assert args.strict_llm is True
+    assert args.hide_test_results is True
     assert args.blind_attacker is False
     assert args.blind_defender is False
 
     # Verify BooleanOptionalAction toggles override YAML defaults cleanly
     toggled = parser.parse_args(
-        ["--no-strict-llm", "--blind-attacker", "--blind-defender"]
+        ["--no-strict-llm", "--no-hide-test-results", "--blind-attacker", "--blind-defender"]
     )
     assert toggled.strict_llm is False
+    assert toggled.hide_test_results is False
     assert toggled.blind_attacker is True
     assert toggled.blind_defender is True
 
     untoggled = parser.parse_args(
-        ["--strict-llm", "--no-blind-attacker", "--no-blind-defender"]
+        ["--strict-llm", "--hide-test-results", "--no-blind-attacker", "--no-blind-defender"]
     )
     assert untoggled.strict_llm is True
+    assert untoggled.hide_test_results is True
     assert untoggled.blind_attacker is False
     assert untoggled.blind_defender is False
 
@@ -1006,3 +1009,138 @@ def test_orchestrator_zero_turns_and_custom_initial_elo(tmp_path: Path) -> None:
     assert summary["defender_final_elo"] == 1500.0
     assert len(summary["external_exams"]) == 1
     assert summary["external_exams"][0]["after_turn"] == 0
+
+
+def test_hide_test_results_shows_tests_but_hides_execution_outcomes(tmp_path: Path) -> None:
+    """Phase 1: Both agents see test definitions, NEVER test execution results (pass/fail/errors)."""
+    problem = load_problems(exam=False)[0]
+    referee = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
+    mutated_code = problem.candidate_mutations[0].mutated_code
+    suite = referee.execute_test_suite(mutated_code, problem.test_cases)
+    assert suite.failed_count >= 1
+    failed_detail = next(td for td in suite.test_details if not td.passed)
+
+    # 1. Attacker prompt: sees test definitions, no execution outcomes
+    attacker = AttackerAgent(blind_mode=False)
+    _, att_user = attacker.build_prompts(problem, memories=[])
+    for tc in problem.test_cases:
+        assert tc.call_expr in att_user
+    assert "Expected -2, got" not in att_user
+
+    # 2. Defender prompt with hide_test_results=True: sees ALL test definitions, ZERO execution results
+    defender = DefenderAgent(blind_mode=False, hide_test_results=True)
+    def_sys, def_user = defender.build_prompts(problem, mutated_code, suite, memories=[])
+    assert "[NO TEST RESULTS MODE" in def_sys
+    for tc in problem.test_cases:
+        assert tc.call_expr in def_user
+    assert "tests failing" not in def_user
+    assert "Failing Deterministic Unit Tests" not in def_user
+    assert (failed_detail.error_message or "Expected ") not in def_user
+
+    # 3. Blind + hide_test_results=True also hides the failure count header
+    blind_defender = DefenderAgent(blind_mode=True, hide_test_results=True)
+    _, blind_user = blind_defender.build_prompts(problem, mutated_code, suite, memories=[])
+    assert "tests failing" not in blind_user
+    for tc in problem.test_cases:
+        assert tc.call_expr not in blind_user
+
+    # 4. Static validation in hide_test_results=True must NOT leak failure via unchanged-code rejection when claiming clean
+    ok_clean, _ = defender._validate_llm_defense_reason(
+        {"is_defective": False, "predicted_defect_type": "clean", "repaired_code": mutated_code},
+        problem,
+        mutated_code,
+        suite,
+    )
+    assert ok_clean is True
+
+    # Missing predicted_defect_type with is_defective=False also defaults cleanly to `clean`
+    ok_clean_implicit, _ = defender._validate_llm_defense_reason(
+        {"is_defective": False, "repaired_code": mutated_code},
+        problem,
+        mutated_code,
+        suite,
+    )
+    assert ok_clean_implicit is True
+
+    # Offline Defender with hide_test_results=True must preserve clean code without peeking at test results
+    clean_mem = CogneeMemoryManager(store_dir=tmp_path / "p1_clean_mem", backend="local_graph")
+    offline_def = DefenderAgent(
+        llm_client=LocalLLMClient(mode="adaptive_local"), hide_test_results=True
+    )
+    clean_out = offline_def.defend(problem, problem.clean_code, None, clean_mem, turn_id=1)
+    assert clean_out.predicted_defect_type == "clean"
+    assert clean_out.repaired_code == problem.clean_code
+
+    # Attacker with hide_test_results=True must not run sandbox test checks in _ensure_candidates
+    no_cand_prob = problem.model_copy(update={"candidate_mutations": []})
+    sym_attacker = AttackerAgent(
+        llm_client=LocalLLMClient(mode="adaptive_local"), hide_test_results=True
+    )
+    def _forbid_exec(*args, **kwargs):
+        raise AssertionError("Attacker must not execute unit tests when hide_test_results=True")
+    sym_attacker._sandbox_checker.execute_test_suite = _forbid_exec  # type: ignore[method-assign]
+    assert len(sym_attacker._ensure_candidates(no_cand_prob)) >= 1
+
+    # Self-contradictory "is_defective=True with unchanged code" IS rejected without peeking at test results
+    ok_contradict, reason = defender._validate_llm_defense_reason(
+        {
+            "is_defective": True,
+            "predicted_defect_type": "negative_or_zero_edge_debt",
+            "repaired_code": mutated_code,
+        },
+        problem,
+        mutated_code,
+        suite,
+    )
+    assert ok_contradict is False
+    assert "identical" in reason
+
+    # 5. End-to-end with Fake LLM verifies orchestrator passes ZERO test results to Defender prompt
+    captured_prompts: list[str] = []
+
+    class CaptureLLM(LocalLLMClient):
+        def __init__(self, role: str) -> None:
+            super().__init__(mode="ollama")
+            self.role = role
+
+        def is_live_llm_available(self) -> bool:
+            return True
+
+        def generate_json(self, system_prompt: str, user_prompt: str) -> dict | None:
+            captured_prompts.append(user_prompt)
+            if self.role == "attacker":
+                return {
+                    "mutated_code": mutated_code,
+                    "injected_defect_type": "negative_or_zero_edge_debt",
+                    "targeted_edge_case": "all negative",
+                    "attack_strategy": "zero floor",
+                    "expected_failing_tests": 1,
+                    "explanation": "zero floor",
+                }
+            return {
+                "is_defective": True,
+                "predicted_defect_type": "negative_or_zero_edge_debt",
+                "defect_location_line": 4,
+                "diagnosis": "zero floor bug",
+                "defense_strategy": "restore nums[0]",
+                "repaired_code": problem.clean_code,
+            }
+
+    orch = ARESLangGraphOrchestrator(
+        problems=[problem],
+        exam_problems=[problem],
+        attacker=AttackerAgent(llm_client=CaptureLLM("attacker"), strict_llm=True),
+        defender=DefenderAgent(
+            llm_client=CaptureLLM("defender"), strict_llm=True, hide_test_results=True
+        ),
+        referee=referee,
+        memory=CogneeMemoryManager(store_dir=tmp_path / "p1_mem", backend="local_graph"),
+        output_dir=tmp_path / "p1_out",
+    )
+    orch.run_self_play(num_turns=1, exam_interval=0, run_baseline_exam=False)
+    assert len(captured_prompts) == 2
+    defender_prompt_seen = captured_prompts[1]
+    for tc in problem.test_cases:
+        assert tc.call_expr in defender_prompt_seen
+    assert "tests failing" not in defender_prompt_seen
+    assert (failed_detail.error_message or "Expected ") not in defender_prompt_seen

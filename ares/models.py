@@ -130,9 +130,12 @@ class StructuredPromptConfig(BaseModel):
     examples: list[dict[str, Any]] = Field(default_factory=list)
 
     def render_system_prompt(
-        self, memories: list[str] | None = None, blind_mode: bool = False
+        self,
+        memories: list[str] | None = None,
+        blind_mode: bool = False,
+        hide_test_results: bool = False,
     ) -> str:
-        """Render the full 5-part structured prompt with retrieved memories and blind-mode rules."""
+        """Render the full 5-part structured prompt with retrieved memories and visibility rules."""
         examples_str = ""
         for idx, ex in enumerate(self.examples, start=1):
             examples_str += f"\n--- Example {idx}: {ex.get('title', 'Sample')} ---\n"
@@ -146,26 +149,45 @@ class StructuredPromptConfig(BaseModel):
             else "- No prior episodic memories recorded yet."
         )
 
-        blind_directive = ""
+        visibility_directive = ""
         if blind_mode:
             if self.agent_role == "attacker":
-                blind_directive = (
+                visibility_directive = (
                     "\n=== [BLIND MODE OVERRIDE] ===\n"
                     "Unit test cases are intentionally HIDDEN. Do NOT expect test inputs in the user prompt. "
                     "Analyze the function specification, control flow, edge conditions, and your past CODE DIFF "
                     "memories below to craft a minimal 1-2 line mutation that breaks only subtle edge cases.\n"
                 )
+            elif hide_test_results:
+                visibility_directive = (
+                    "\n=== [BLIND + NO TEST RESULTS OVERRIDE] ===\n"
+                    "Both unit test cases AND test execution results (pass/fail counts, assertion errors) "
+                    "are intentionally HIDDEN. Perform careful static code review against the Function "
+                    "Specification, check boundary/edge conditions, and leverage your past VERIFIED REPAIR "
+                    "DIFF memories below. Classify as `clean` if no defect exists.\n"
+                )
             else:
-                blind_directive = (
+                visibility_directive = (
                     "\n=== [BLIND MODE OVERRIDE] ===\n"
                     "Failing unit test inputs and assertion errors are intentionally HIDDEN. "
                     "Perform careful static code review against the Function Specification, check boundary/edge "
                     "conditions, and leverage your past VERIFIED REPAIR DIFF memories below.\n"
                 )
+        elif hide_test_results and self.agent_role == "defender":
+            visibility_directive = (
+                "\n=== [NO TEST RESULTS MODE (TESTS-ONLY SPECIFICATION)] ===\n"
+                "You are given the full deterministic unit test definitions (inputs and expected outputs) "
+                "as the specification contract, but test execution results (pass/fail counts, failing test "
+                "IDs, actual outputs, and assertion errors) are intentionally HIDDEN.\n"
+                "Statically trace the code against every unit test case and the Function Specification to "
+                "determine whether a defect exists. If a defect exists, classify it accurately and repair "
+                "the code so ALL unit tests pass. If the code already satisfies every unit test, classify "
+                "it as `clean` and preserve it unchanged.\n"
+            )
 
         return (
             f"=== [1. TASK] ===\n{self.task.strip()}\n"
-            f"{blind_directive}\n"
+            f"{visibility_directive}\n"
             f"=== [2. RECIPE] ===\n{self.recipe.strip()}\n\n"
             f"=== [3. OUTPUT SCHEMA] ===\n{self.output.strip()}\n\n"
             f"=== [4. VALIDATION CHECKLIST] ===\n{self.validation.strip()}\n\n"
