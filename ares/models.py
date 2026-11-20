@@ -69,6 +69,23 @@ def safe_int(val: Any, default: int = 1) -> int:
     return default
 
 
+def safe_bool(val: Any, default: bool = True) -> bool:
+    """Safely parse a boolean from LLM JSON output (handling string 'false'/'no'/'0')."""
+    if isinstance(val, bool):
+        return val
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return bool(val)
+    if isinstance(val, str):
+        lowered = val.strip().lower()
+        if lowered in ("true", "yes", "1", "y", "on"):
+            return True
+        if lowered in ("false", "no", "0", "n", "off", "none", "clean", ""):
+            return False
+    return default
+
+
 class UnitTestCase(BaseModel):
     """A single deterministic test case for a code analysis problem."""
 

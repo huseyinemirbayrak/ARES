@@ -260,6 +260,7 @@ class CogneeMemoryManager:
         reflexion: TurnReflexion | None = None,
         blind_attacker: bool = False,
         blind_defender: bool = False,
+        hide_test_results: bool = False,
     ) -> list[str]:
         """Ingest a turn's code-diff reflexions into Real Cognee (when active) and local graph store."""
         now = datetime.now(timezone.utc).isoformat()
@@ -272,6 +273,7 @@ class CogneeMemoryManager:
                 verdict=verdict,
                 blind_attacker=blind_attacker,
                 blind_defender=blind_defender,
+                hide_test_results=hide_test_results,
             )
 
         base_episode_id = f"ep_turn_{turn_id:04d}_{problem.problem_id}"

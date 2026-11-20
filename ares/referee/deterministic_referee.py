@@ -70,6 +70,16 @@ def _normalize_value(val: Any) -> Any:
     return val
 
 
+def _ast_equal(code_a: str, code_b: str) -> bool:
+    """Return True if two Python snippets have identical ASTs (ignoring comments/whitespace)."""
+    if code_a.strip() == code_b.strip():
+        return True
+    try:
+        return ast.dump(ast.parse(code_a)) == ast.dump(ast.parse(code_b))
+    except SyntaxError:
+        return False
+
+
 def _strict_equal(a: Any, b: Any) -> bool:
     """Compare normalized values strictly so Python `bool` (True/False) never matches `int` (1/0)."""
     if type(a) is bool or type(b) is bool:
@@ -495,6 +505,49 @@ class DeterministicReferee:
             syntax_or_runtime_error="TimeoutExceeded" if any_timeout else None,
         )
 
+    def verify_bug_mutation(
+        self,
+        clean_code: str,
+        mutated_code: str,
+        test_cases: list[UnitTestCase],
+        suite_result: SuiteExecutionResult | None = None,
+    ) -> tuple[bool, str, SuiteExecutionResult]:
+        """Strictly verify that `mutated_code` is a genuine, subtle 1-2 test-breaking bug.
+
+        Guarantees:
+        1. Valid Python syntax & passes AST security filter.
+        2. Genuine AST difference from `clean_code` (not comment/whitespace-only).
+        3. Does not time out.
+        4. Breaks between `min_broken_tests` and `max_broken_tests` tests (1-2 by default)
+           while keeping at least 1 test passing when `total_tests > 1`.
+        """
+        suite = (
+            suite_result
+            if suite_result is not None
+            else self.execute_test_suite(mutated_code, test_cases)
+        )
+        if not suite.syntax_valid:
+            return False, f"invalid_syntax_or_security: {suite.syntax_or_runtime_error}", suite
+        if suite.timed_out:
+            return False, "timed_out", suite
+        if _ast_equal(clean_code, mutated_code):
+            return False, "ast_identical_to_clean_code", suite
+        if suite.failed_count < self.min_broken_tests:
+            return (
+                False,
+                f"too_few_broken_tests ({suite.failed_count} < {self.min_broken_tests})",
+                suite,
+            )
+        if suite.failed_count > self.max_broken_tests or (
+            suite.total_tests > 1 and suite.failed_count >= suite.total_tests
+        ):
+            return (
+                False,
+                f"too_many_broken_tests ({suite.failed_count}/{suite.total_tests} > {self.max_broken_tests})",
+                suite,
+            )
+        return True, "valid_subtle_bug", suite
+
     def evaluate_turn(
         self,
         turn_id: int,
@@ -520,7 +573,7 @@ class DeterministicReferee:
             attack_validity = "invalid_syntax_or_timeout"
         elif broken < self.min_broken_tests:
             attack_validity = "invalid_no_op_attack"
-        elif broken > self.max_broken_tests:
+        elif broken > self.max_broken_tests or (total > 1 and broken >= total):
             attack_validity = "invalid_over_broken_attack"
         else:
             attack_validity = "valid_subtle_attack"
@@ -530,7 +583,7 @@ class DeterministicReferee:
             (
                 m
                 for m in problem.candidate_mutations
-                if m.mutated_code.strip() == attacker_output.mutated_code.strip()
+                if _ast_equal(m.mutated_code, attacker_output.mutated_code)
             ),
             None,
         )
@@ -619,10 +672,14 @@ class DeterministicReferee:
             attacker_reward = self.rewards["invalid_attack_too_many_broken"]
             winner = "defender" if defense_repaired_all else "draw"
             defender_reward = 0.85 if defense_repaired_all else 0.0
+            over_reason = (
+                f"breaking all {broken}/{total} tests"
+                if total > 1 and broken >= total
+                else f"exceeding the maximum of {self.max_broken_tests} broken tests"
+            )
             attacker_feedback = (
                 f"[INVALID OVER-BROKEN ATTACK] Your mutation broke {broken}/{total} tests "
-                f"({attacker_suite.failed_test_ids}), exceeding the maximum of "
-                f"{self.max_broken_tests} broken tests. Keep nominal tests passing!"
+                f"({attacker_suite.failed_test_ids}), {over_reason}. Keep nominal tests passing!"
             )
             defender_feedback = (
                 f"[OVER-BROKEN ATTACK PENALIZED] Attacker broke {broken}/{total} tests "

@@ -1144,3 +1144,117 @@ def test_hide_test_results_shows_tests_but_hides_execution_outcomes(tmp_path: Pa
         assert tc.call_expr in defender_prompt_seen
     assert "tests failing" not in defender_prompt_seen
     assert (failed_detail.error_message or "Expected ") not in defender_prompt_seen
+
+
+def test_safe_bool_handles_llm_string_booleans_in_defender(tmp_path: Path) -> None:
+    """Pre-Phase-2 review fix: string 'false' from local LLMs must never parse as True."""
+    from ares.models import safe_bool
+
+    assert safe_bool("false") is False
+    assert safe_bool("False") is False
+    assert safe_bool("no") is False
+    assert safe_bool("0") is False
+    assert safe_bool("true") is True
+    assert safe_bool("1") is True
+
+    problem = load_problems(exam=False)[0]
+
+    class StringFalseLLM(LocalLLMClient):
+        def __init__(self) -> None:
+            super().__init__(mode="ollama")
+
+        def is_live_llm_available(self) -> bool:
+            return True
+
+        def generate_json(self, system_prompt: str, user_prompt: str) -> dict | None:
+            return {
+                "is_defective": "false",
+                "repaired_code": problem.clean_code,
+                "diagnosis": "Code already satisfies all tests.",
+                "defense_strategy": "Preserve clean code",
+            }
+
+    mem = CogneeMemoryManager(store_dir=tmp_path / "sb_mem", backend="local_graph")
+    defender = DefenderAgent(
+        llm_client=StringFalseLLM(), strict_llm=True, hide_test_results=True
+    )
+    out = defender.defend(problem, problem.clean_code, None, mem, turn_id=1)
+    assert out.is_defective is False
+    assert out.predicted_defect_type == "clean"
+
+
+def test_phase2_referee_1_to_2_rule_verify_bug_mutation_and_leak_free_reflexion() -> None:
+    """Phase 2: Verify 1-2 test subtlety rule, AST bug verification, winner rules, and leak-free Reflexion."""
+    from ares.memory.reflexion import build_turn_reflexion
+
+    problem = load_problems(exam=False)[0]
+    referee = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
+
+    # 1. verify_bug_mutation rejects comment-only/no-op, over-broken, and syntax errors; accepts true 1-2 broken bugs
+    comment_only = problem.clean_code + "# harmless comment\n"
+    ok_comment, reason_c, _ = referee.verify_bug_mutation(
+        problem.clean_code, comment_only, problem.test_cases
+    )
+    assert ok_comment is False and reason_c == "ast_identical_to_clean_code"
+
+    noop_ast_diff = problem.clean_code.replace("return best", "return best + 0")
+    ok_noop, reason_n, _ = referee.verify_bug_mutation(
+        problem.clean_code, noop_ast_diff, problem.test_cases
+    )
+    assert ok_noop is False and "too_few_broken_tests" in reason_n
+
+    over_mut = problem.candidate_mutations[2]  # breaks 4/5 tests
+    ok_over, reason_o, _ = referee.verify_bug_mutation(
+        problem.clean_code, over_mut.mutated_code, problem.test_cases
+    )
+    assert ok_over is False and "too_many_broken_tests" in reason_o
+
+    ok_syn, reason_s, _ = referee.verify_bug_mutation(
+        problem.clean_code, "def max_subarray_sum(nums:\n    pass\n", problem.test_cases
+    )
+    assert ok_syn is False and "invalid_syntax" in reason_s
+
+    subtle_mut = problem.candidate_mutations[0]  # breaks 1/5 tests
+    ok_sub, reason_sub, sub_suite = referee.verify_bug_mutation(
+        problem.clean_code, subtle_mut.mutated_code, problem.test_cases
+    )
+    assert ok_sub is True and reason_sub == "valid_subtle_bug" and sub_suite.failed_count == 1
+
+    # 2. Curated mutation with whitespace/comment variation still resolves as curated via AST equality
+    att_ws = AttackerOutput(
+        mutated_code=subtle_mut.mutated_code + "\n# formatting difference\n",
+        injected_defect_type="off_by_one_boundary",  # intentionally wrong claim
+        targeted_edge_case="edge",
+        attack_strategy="curated ws",
+        explanation="ws test",
+    )
+    def_fail = DefenderOutput(
+        is_defective=True,
+        predicted_defect_type="off_by_one_boundary",
+        defect_location_line=1,
+        diagnosis="missed",
+        defense_strategy="unchanged",
+        repaired_code=subtle_mut.mutated_code,
+    )
+    v_evaded = referee.evaluate_turn(1, problem, att_ws, def_fail)
+    assert v_evaded.attack_validity == "valid_subtle_attack"
+    assert v_evaded.ground_truth_source == "curated"
+    assert v_evaded.ground_truth_defect == subtle_mut.defect_type
+    assert v_evaded.winner == "attacker"
+
+    # 3. Reflexion with hide_test_results=True must NEVER leak failed_test_ids, raw counts, or clean_code
+    refl = build_turn_reflexion(
+        1,
+        problem,
+        att_ws,
+        def_fail,
+        v_evaded,
+        hide_test_results=True,
+    )
+    for tid in v_evaded.defender_suite_result.failed_test_ids:
+        assert tid not in refl.defender_lesson
+        assert tid not in refl.attacker_lesson
+    assert "1/5" not in refl.attacker_lesson
+    assert "1/5" not in refl.defender_lesson
+    assert problem.clean_code.strip() not in refl.defender_lesson
+    assert "did not satisfy all unit tests" in refl.defender_lesson

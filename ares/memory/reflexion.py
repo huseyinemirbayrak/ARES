@@ -119,6 +119,7 @@ def build_turn_reflexion(
     verdict: RefereeVerdict,
     blind_attacker: bool = False,
     blind_defender: bool = False,
+    hide_test_results: bool = False,
 ) -> TurnReflexion:
     """Synthesize concrete, generalizable, leak-free lessons for both Attacker and Defender."""
     ast_features = extract_ast_features(problem.clean_code)
@@ -131,21 +132,31 @@ def build_turn_reflexion(
     total = verdict.attacker_suite_result.total_tests
     def_failed = verdict.defender_suite_result.failed_count
 
-    # 1. Attacker Reflexion Lesson
+    # 1. Attacker Reflexion Lesson (respects hide_test_results: outcome category only, no raw test counts/IDs)
     if verdict.attack_validity == "valid_subtle_attack" and verdict.winner == "attacker":
         att_outcome = "win"
+        att_scope = (
+            "satisfied the subtle 1-2 test rule and EVADED Defender"
+            if hide_test_results
+            else f"broke {att_failed}/{total} tests and EVADED Defender"
+        )
         att_lesson = (
             f"[WINNING SUBTLE ATTACK | AST: {feat_str} | Type: {attacker_output.injected_defect_type}] "
-            f"Surgical edit broke {att_failed}/{total} tests and EVADED Defender.\n"
+            f"Surgical edit {att_scope}.\n"
             f"Effective mutation diff:\n{attack_diff}\n"
             f"Takeaway: Targeting a single edge/boundary condition with a 1-2 line edit preserves nominal paths "
             f"and defeats Defender on functions with [{feat_str}]."
         )
     elif verdict.attack_validity == "valid_subtle_attack":
         att_outcome = "caught"
+        att_scope = (
+            "satisfied the subtle 1-2 test rule"
+            if hide_test_results
+            else f"broke {att_failed}/{total} tests (valid subtlety)"
+        )
         att_lesson = (
             f"[CAUGHT SUBTLE ATTACK | AST: {feat_str} | Type: {attacker_output.injected_defect_type}] "
-            f"Edit broke {att_failed}/{total} tests (valid subtlety), but Defender repaired it via: "
+            f"Edit {att_scope}, but Defender repaired it via: "
             f"'{defender_output.defense_strategy}'.\n"
             f"Predictable diff:\n{attack_diff}\n"
             f"Takeaway: Avoid repeating this exact mutation pattern on [{feat_str}]; target a subtler "
@@ -153,19 +164,29 @@ def build_turn_reflexion(
         )
     elif verdict.attack_validity == "invalid_over_broken_attack":
         att_outcome = "invalid"
+        att_header = (
+            f"[FAILED ATTACK — OVER-BROKEN | AST: {feat_str}]"
+            if hide_test_results
+            else f"[FAILED ATTACK — OVER-BROKEN ({att_failed}/{total} tests broken) | AST: {feat_str}]"
+        )
         att_lesson = (
-            f"[FAILED ATTACK — OVER-BROKEN ({att_failed}/{total} tests broken) | AST: {feat_str}] "
+            f"{att_header} "
             f"DO NOT make destructive changes like:\n{attack_diff}\n"
-            f"Takeaway: You broke core nominal behavior (>2 tests failed). Next time modify ONLY one "
+            f"Takeaway: You broke core nominal behavior (exceeded the subtle 1-2 test limit). Next time modify ONLY one "
             f"boundary operator (`<` vs `<=`), initializer, or edge guard so standard inputs still pass."
         )
     elif verdict.attack_validity == "invalid_no_op_attack":
         att_outcome = "invalid"
+        att_header = (
+            f"[FAILED ATTACK — NO-OP | AST: {feat_str}]"
+            if hide_test_results
+            else f"[FAILED ATTACK — NO-OP ({att_failed}/{total} tests broken) | AST: {feat_str}]"
+        )
         att_lesson = (
-            f"[FAILED ATTACK — NO-OP (0/{total} tests broken) | AST: {feat_str}] "
-            f"This edit had zero effect on outputs:\n{attack_diff}\n"
+            f"{att_header} "
+            f"This edit did not break enough edge-case tests:\n{attack_diff}\n"
             f"Takeaway: Do not return unchanged code or dead-branch edits. Alter an active condition, "
-            f"loop bound, or return edge branch."
+            f"loop bound, or return edge branch so 1-2 edge-case tests fail."
         )
     else:
         att_outcome = "invalid"
@@ -176,7 +197,7 @@ def build_turn_reflexion(
             f"and avoid infinite loops."
         )
 
-    # 2. Defender Reflexion Lesson (NEVER leaks ground-truth `problem.clean_code`!)
+    # 2. Defender Reflexion Lesson (NEVER leaks ground-truth `problem.clean_code`, and hides test IDs/counts under hide_test_results!)
     if verdict.defense_repaired_all_tests:
         def_outcome = "repaired"
         cls_note = (
@@ -187,19 +208,25 @@ def build_turn_reflexion(
                 f"not '{defender_output.predicted_defect_type}'."
             )
         )
+        pass_summary = (
+            "Successfully passed all unit tests."
+            if hide_test_results
+            else f"Successfully restored {total}/{total} tests."
+        )
         def_lesson = (
             f"[VERIFIED REPAIR PATTERN | AST: {feat_str} | Defect: {verdict.ground_truth_defect}] "
-            f"Successfully restored {total}/{total} tests. {cls_note}\n"
+            f"{pass_summary} {cls_note}\n"
             f"Verified patch diff:\n{repair_diff}\n"
             f"Rule: {defender_output.defense_strategy}"
         )
     else:
         def_outcome = "failed"
-        test_scope_note = (
-            f"{def_failed}/{total} hidden tests still failed"
-            if blind_defender
-            else f"{def_failed}/{total} tests still failed ({verdict.defender_suite_result.failed_test_ids})"
-        )
+        if hide_test_results:
+            test_scope_note = "did not satisfy all unit tests"
+        elif blind_defender:
+            test_scope_note = f"{def_failed}/{total} hidden tests still failed"
+        else:
+            test_scope_note = f"{def_failed}/{total} tests still failed ({verdict.defender_suite_result.failed_test_ids})"
         def_lesson = (
             f"[FAILED REPAIR REFLEXION | AST: {feat_str} | Actual Defect: {verdict.ground_truth_defect}] "
             f"Your patch did NOT resolve the bug ({test_scope_note}).\n"

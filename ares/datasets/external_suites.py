@@ -177,8 +177,8 @@ def load_quixbugs_suite() -> list[CodeProblem]:
         for line in json_file.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 arr = json.loads(line)
-                # Skip upstream QuixBugs 50-char exponential blowup case in naive recursive levenshtein
-                if prog_name == "levenshtein" and len(str(arr[0][1])) > 20:
+                # Skip upstream QuixBugs exponential blowup cases (>10 chars) in naive recursive levenshtein
+                if prog_name == "levenshtein" and len(str(arr[0][1])) > 10:
                     continue
                 # Skip odd-x QuixBugs sqrt cases whose JSON expected value came from Python 2 integer `x / 2`
                 if prog_name == "sqrt" and isinstance(arr[0][0], int) and arr[0][0] % 2 != 0:

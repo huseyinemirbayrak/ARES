@@ -20,6 +20,7 @@ from ares.models import (
     StructuredPromptConfig,
     SuiteExecutionResult,
     normalize_defect_category,
+    safe_bool,
     safe_int,
 )
 from ares.referee.deterministic_referee import DeterministicReferee
@@ -69,11 +70,13 @@ class DefenderAgent:
                     f"Code Under Review ({total_tests} hidden deterministic tests — "
                     f"execution results HIDDEN):"
                 )
+                hidden_label = "Unit Test Suite & Execution Results: [HIDDEN - BLIND MODE]"
             else:
                 code_header = (
                     f"Suspected Mutated Code ({attacker_suite.failed_count}/"
                     f"{attacker_suite.total_tests} hidden tests failing):"
                 )
+                hidden_label = "Failing Unit Test Details: [HIDDEN - BLIND MODE]"
             user_prompt = (
                 f"Problem ID: {problem.problem_id} ({problem.title})\n"
                 f"MLCQ Category: {problem.mlcq_category}\n"
@@ -81,7 +84,7 @@ class DefenderAgent:
                 f"Function Specification: {problem.description}\n\n"
                 f"{code_header}\n"
                 f"```python\n{mutated_code}```\n\n"
-                f"Failing Unit Test Details: [HIDDEN - BLIND MODE]\n\n"
+                f"{hidden_label}\n\n"
                 f"Perform static analysis against the Function Specification and apply your retrieved "
                 f"VERIFIED REPAIR PATTERN diffs. Classify the exact defect category and return the fully "
                 f"repaired Python code so all {total_tests}/{total_tests} hidden tests pass."
@@ -168,19 +171,29 @@ class DefenderAgent:
                     )
                     if valid:
                         raw_is_defective = llm_json.get("is_defective")
+                        parsed_is_defective = (
+                            safe_bool(raw_is_defective, default=True)
+                            if raw_is_defective is not None
+                            else None
+                        )
                         default_cat = (
-                            "clean" if raw_is_defective is False else "off_by_one_boundary"
+                            "clean"
+                            if parsed_is_defective is False
+                            else "off_by_one_boundary"
                         )
                         defect_cat = normalize_defect_category(
                             llm_json.get("predicted_defect_type"),
                             default=default_cat,
                         )
+                        final_is_defective = (
+                            parsed_is_defective
+                            if parsed_is_defective is not None
+                            else (defect_cat != "clean")
+                        )
+                        if defect_cat == "clean" and str(llm_json["repaired_code"]).strip() == mutated_code.strip():
+                            final_is_defective = False
                         return DefenderOutput(
-                            is_defective=bool(
-                                raw_is_defective
-                                if raw_is_defective is not None
-                                else (defect_cat != "clean")
-                            ),
+                            is_defective=final_is_defective,
                             predicted_defect_type=defect_cat,
                             defect_location_line=safe_int(
                                 llm_json.get("defect_location_line"), default=3
@@ -267,12 +280,19 @@ class DefenderAgent:
         if self.hide_test_results or attacker_suite is None:
             # Never peek at test execution results; only reject self-contradictory "defective but unchanged" output
             raw_is_defective = payload.get("is_defective")
-            default_cat = "clean" if raw_is_defective is False else "off_by_one_boundary"
+            parsed_is_defective = (
+                safe_bool(raw_is_defective, default=True)
+                if raw_is_defective is not None
+                else None
+            )
+            default_cat = "clean" if parsed_is_defective is False else "off_by_one_boundary"
             claimed_cat = normalize_defect_category(
                 payload.get("predicted_defect_type"), default=default_cat
             )
-            claimed_defective = bool(
-                raw_is_defective if raw_is_defective is not None else (claimed_cat != "clean")
+            claimed_defective = (
+                parsed_is_defective
+                if parsed_is_defective is not None
+                else (claimed_cat != "clean")
             )
             if claimed_defective and claimed_cat != "clean" and code.strip() == mutated_code.strip():
                 return (

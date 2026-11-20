@@ -205,6 +205,7 @@ class ARESLangGraphOrchestrator:
         def_output = DefenderOutput.model_validate(state["defender_output"])
         verdict = RefereeVerdict.model_validate(state["verdict"])
 
+        hide_results = self.defender.hide_test_results or self.attacker.hide_test_results
         reflexion = build_turn_reflexion(
             turn_id=turn_id,
             problem=problem,
@@ -213,6 +214,7 @@ class ARESLangGraphOrchestrator:
             verdict=verdict,
             blind_attacker=self.attacker.blind_mode,
             blind_defender=self.defender.blind_mode,
+            hide_test_results=hide_results,
         )
         return {"reflexion": reflexion.model_dump()}
 
@@ -228,6 +230,7 @@ class ARESLangGraphOrchestrator:
             else None
         )
 
+        hide_results = self.defender.hide_test_results or self.attacker.hide_test_results
         mem_ids = self.memory.record_turn_memory(
             turn_id=turn_id,
             problem=problem,
@@ -237,6 +240,7 @@ class ARESLangGraphOrchestrator:
             reflexion=reflexion,
             blind_attacker=self.attacker.blind_mode,
             blind_defender=self.defender.blind_mode,
+            hide_test_results=hide_results,
         )
 
         record = TurnRecord(
