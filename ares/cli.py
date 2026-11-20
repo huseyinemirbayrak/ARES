@@ -10,6 +10,7 @@ import argparse
 import logging
 from pathlib import Path
 import shutil
+import sys
 from typing import Any
 import yaml
 from rich.console import Console
@@ -236,21 +237,21 @@ def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--blind-attacker",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=bool(sp_cfg.get("blind_attacker", False)),
         help="Hide unit test cases from the Attacker Agent prompt (blind black-box attack mode)",
     )
     parser.add_argument(
         "--blind-defender",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=bool(sp_cfg.get("blind_defender", False)),
         help="Hide failing unit test details from the Defender Agent prompt (blind specification-driven repair mode)",
     )
     parser.add_argument(
         "--strict-llm",
         action=argparse.BooleanOptionalAction,
-        default=bool(sp_cfg.get("strict_llm", False)),
-        help="Disable heuristic AST fallbacks so every turn measures pure Local LLM performance",
+        default=bool(sp_cfg.get("strict_llm", True)),
+        help="Disable heuristic AST fallbacks so every turn measures pure Local LLM performance (default: enabled; pass --no-strict-llm for heuristic baseline)",
     )
     parser.add_argument(
         "--memory-backend",
@@ -357,15 +358,38 @@ def _handle_inspect_memory(bundle_path: str) -> int:
     return 0
 
 
+def _resolve_strict_llm_mode(
+    args: argparse.Namespace,
+    raw_argv: list[str],
+    parser: argparse.ArgumentParser,
+) -> bool:
+    """Resolve interaction between `--llm-mode adaptive_local` and `--strict-llm`."""
+    explicit_strict = "--strict-llm" in raw_argv
+    if args.llm_mode == "adaptive_local":
+        if explicit_strict:
+            parser.error(
+                "`--llm-mode adaptive_local` disables live LLM calls and cannot be combined with `--strict-llm`."
+            )
+        if args.strict_llm:
+            console.print(
+                "[bold yellow]NOTE:[/bold yellow] `--llm-mode adaptive_local` explicitly selected; "
+                "disabling `strict_llm` to run the offline AST heuristic baseline."
+            )
+            return False
+    return bool(args.strict_llm)
+
+
 def main(argv: list[str] | None = None) -> int:
+    effective_argv = sys.argv[1:] if argv is None else list(argv)
+
     # Pre-parse `--config` so YAML defaults take effect before full CLI parsing
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--config", type=str, default=str(DEFAULT_CONFIG_PATH))
-    pre_args, _ = pre_parser.parse_known_args(argv)
+    pre_args, _ = pre_parser.parse_known_args(effective_argv)
     game_cfg = load_game_config(pre_args.config)
 
     parser = build_parser(game_cfg)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(effective_argv)
     _configure_logging(verbose=args.verbose)
 
     sp_cfg = game_cfg.get("self_play", {})
@@ -458,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
             f"episode(s) from `{memory.bundle_path}` (schema={memory.migrated_legacy_schema or 'current'}). "
             f"Turn-0 baseline is NOT a cold start — pass `--fresh-memory` for a clean baseline experiment."
         )
+
+    args.strict_llm = _resolve_strict_llm_mode(args, effective_argv, parser)
 
     attacker_llm = LocalLLMClient(
         provider=provider,

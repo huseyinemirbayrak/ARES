@@ -98,7 +98,7 @@ run_benchmark.bat --limit 10 --rounds 2 --provider ollama
 
 ### Seçenek C: Doğrudan Python ile Çalıştırma
 ```powershell
-& "C:\Users\LENOVO\OneDrive\Desktop\CS 401\.venv\Scripts\python.exe" run_agents_benchmark.py --provider ollama --limit 10
+& "..\..\..\.venv\Scripts\python.exe" run_agents_benchmark.py --provider ollama --limit 10
 ```
 
 ---
@@ -139,7 +139,7 @@ run_benchmark.bat --limit 10 --rounds 2 --provider ollama
 
 Tüm hafıza motorlarının, sanal kum havuzunun (Sandbox) ve 4 ajanın graf derleme mekanizmalarının çalıştığını doğrulamak için:
 ```powershell
-& "C:\Users\LENOVO\OneDrive\Desktop\CS 401\.venv\Scripts\python.exe" test_agents.py
+& "..\..\..\.venv\Scripts\python.exe" test_agents.py
 ```
 *(Bu test; QuixBugs veri kümesi yükleyicisini, sonsuz döngü yakalayan sandbox'ı, 4 hafıza motorunu ve 4 LangGraph ajanını uçtan uca test eder - 13/13 Başarılı).*
 

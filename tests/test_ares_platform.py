@@ -549,6 +549,7 @@ def test_game_config_yaml_loads_into_cli_parser() -> None:
 
     cfg = load_game_config()
     assert cfg.get("self_play", {}).get("default_turns") == 25
+    assert cfg.get("self_play", {}).get("strict_llm") is True
     parser = build_parser(cfg)
     args = parser.parse_args([])
     assert args.turns == 25
@@ -556,6 +557,63 @@ def test_game_config_yaml_loads_into_cli_parser() -> None:
     assert args.cognify_interval == 1
     assert args.num_ctx == 8192
     assert args.llm_timeout == 60.0
+    assert args.strict_llm is True
+    assert args.blind_attacker is False
+    assert args.blind_defender is False
+
+    # Verify BooleanOptionalAction toggles override YAML defaults cleanly
+    toggled = parser.parse_args(
+        ["--no-strict-llm", "--blind-attacker", "--blind-defender"]
+    )
+    assert toggled.strict_llm is False
+    assert toggled.blind_attacker is True
+    assert toggled.blind_defender is True
+
+    untoggled = parser.parse_args(
+        ["--strict-llm", "--no-blind-attacker", "--no-blind-defender"]
+    )
+    assert untoggled.strict_llm is True
+    assert untoggled.blind_attacker is False
+    assert untoggled.blind_defender is False
+
+
+def test_strict_llm_and_adaptive_local_cli_interaction(tmp_path: Path) -> None:
+    """Verify adaptive_local auto-disables default strict_llm, rejects explicit --strict-llm, and gives clear errors."""
+    import pytest
+    from ares.cli import _resolve_strict_llm_mode, build_parser, load_game_config
+
+    cfg = load_game_config()
+    parser = build_parser(cfg)
+
+    # 1. Explicit `--llm-mode adaptive_local` without `--strict-llm` disables strict_llm cleanly
+    argv_auto_off = ["--llm-mode", "adaptive_local"]
+    args_auto_off = parser.parse_args(argv_auto_off)
+    assert args_auto_off.strict_llm is True
+    assert _resolve_strict_llm_mode(args_auto_off, argv_auto_off, parser) is False
+
+    # 2. Contradictory `--llm-mode adaptive_local --strict-llm` fails fast at CLI parsing
+    argv_conflict = ["--llm-mode", "adaptive_local", "--strict-llm"]
+    args_conflict = parser.parse_args(argv_conflict)
+    with pytest.raises(SystemExit) as exc_info:
+        _resolve_strict_llm_mode(args_conflict, argv_conflict, parser)
+    assert exc_info.value.code == 2
+
+    # 3. Direct Python API with adaptive_local + strict_llm=True raises an accurate, actionable RuntimeError
+    problem = load_problems(exam=False)[0]
+    memory = CogneeMemoryManager(store_dir=tmp_path / "strict_err_mem", backend="local_graph")
+    offline_llm = LocalLLMClient(mode="adaptive_local")
+
+    attacker = AttackerAgent(llm_client=offline_llm, strict_llm=True)
+    with pytest.raises(RuntimeError, match="adaptive_local") as att_err:
+        attacker.attack(problem, memory, turn_id=1)
+    assert "--no-strict-llm" in str(att_err.value)
+
+    referee = DeterministicReferee()
+    suite = referee.execute_test_suite(problem.candidate_mutations[0].mutated_code, problem.test_cases)
+    defender = DefenderAgent(llm_client=offline_llm, strict_llm=True)
+    with pytest.raises(RuntimeError, match="adaptive_local") as def_err:
+        defender.defend(problem, problem.candidate_mutations[0].mutated_code, suite, memory, turn_id=1)
+    assert "--no-strict-llm" in str(def_err.value)
 
 
 def test_legacy_v1_bundle_migrates_without_keyerror_and_strips_leaked_repairs(

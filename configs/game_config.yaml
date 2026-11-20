@@ -50,7 +50,8 @@ memory:
 
 llm:
   # Supported modes: "auto", "ollama", "openai_compatible", "adaptive_local"
-  # "auto" checks if local Ollama / OpenAI endpoint is reachable, and seamlessly falls back to "adaptive_local"
+  # "auto" detects Ollama vs OpenAI-compatible endpoints; if unreachable, stops with an error
+  # while strict_llm: true (or falls back to "adaptive_local" when --no-strict-llm is passed)
   mode: "auto"
   timeout_seconds: 60.0
   num_ctx: 8192

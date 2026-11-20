@@ -8,7 +8,7 @@
 
 1. **5 Bölümlü Yapılandırılmış Prompt Sistemi (`StructuredPromptConfig`)**:
    - Attacker ve Defender ajanları YAML üzerinden parametre kontrollü 5 bölümlü promptlarla (`Task`, `Recipe`, `Output`, `Validation`, `Examples`) yönetilir ([attacker_prompt.yaml](configs/prompts/attacker_prompt.yaml), [defender_prompt.yaml](configs/prompts/defender_prompt.yaml)).
-   - `--blind-attacker` / `--blind-defender` bayraklarıyla testlerin görünürlüğü kapatılıp açılabilir; `--strict-llm` ile saf LLM performansı ölçülür.
+   - `--blind-attacker` / `--blind-defender` (`--no-blind-*`) bayraklarıyla testlerin görünürlüğü kapatılıp açılabilir; `--strict-llm` varsayılan olarak açıktır (LLM'siz AST heuristic baseline için `--no-strict-llm` kullanılır).
 
 2. **Gerçek LangGraph Orkestratörü (`ARESLangGraphOrchestrator`)**:
    - Gerçek `langgraph.graph.StateGraph` + `MemorySaver` checkpoint yapısıyla çalışır:
@@ -38,6 +38,7 @@ uv sync
 # Gerçek Cognee SDK desteği ile kurulum (opsiyonel extra)
 uv sync --extra cognee
 # veya: pip install -e ".[cognee]"
+# (Not: `requirements.txt` dosyası Cognee dahil tam kurulum kilit listesini içerir.)
 ```
 
 ---
@@ -77,6 +78,9 @@ uv sync --extra cognee
 
 # Bulut LLM + OpenAI embedding (boyut otomatik 1536 olarak çözümlenir)
 .\.venv\Scripts\python.exe run_ares.py --fresh-memory --base-url https://api.openai.com/v1 --api-key $env:OPENAI_API_KEY --attacker-model gpt-4o-mini --defender-model gpt-4o-mini --memory-backend cognee --embedding-model text-embedding-3-small
+
+# Çevrimdışı (LLM'siz) AST heuristic baseline testi
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 10 --exam-interval 5 --llm-mode adaptive_local --no-strict-llm
 ```
 
 ### 2. Veriseti Doğrulama ve Benchmark Seçimi
@@ -108,4 +112,4 @@ uv sync --extra cognee
 - `--memory-backend {auto,cognee,local_graph}`: Hafıza arka ucu seçimi.
 - `--embedding-provider`, `--embedding-model`, `--embedding-dimensions`, `--cognee-search-type`, `--cognify-interval`: Gerçek Cognee ayarları.
 - `--llm-mode {auto,ollama,openai_compatible,adaptive_local}`, `--base-url`, `--api-key`, `--llm-timeout`, `--num-ctx`: LLM sağlayıcı ve bağlam penceresi ayarları.
-- `--strict-llm`, `--blind-attacker`, `--blind-defender`: Bilimsel değerlendirme ve kapalı-kutu test ayarları.
+- `--strict-llm` / `--no-strict-llm`, `--blind-attacker` / `--no-blind-attacker`, `--blind-defender` / `--no-blind-defender`: Bilimsel değerlendirme ve kapalı-kutu test ayarları (`--strict-llm` varsayılan olarak açıktır).

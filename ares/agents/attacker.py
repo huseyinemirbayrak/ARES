@@ -158,9 +158,14 @@ class AttackerAgent:
                     used_llm=True,
                 )
         elif self.strict_llm:
+            detail = (
+                "LLM mode is set to 'adaptive_local' (live LLM calls disabled)."
+                if self.llm_client.mode == "adaptive_local"
+                else f"Attacker LLM endpoint ({self.llm_client.provider} @ {self.llm_client.base_url}) is not reachable."
+            )
             raise RuntimeError(
-                f"Strict LLM mode (--strict-llm) is enabled, but Attacker LLM endpoint "
-                f"({self.llm_client.provider} @ {self.llm_client.base_url}) is not reachable."
+                f"Strict LLM mode (--strict-llm) is enabled, but {detail} "
+                f"Start/configure your LLM server or pass `--no-strict-llm` for an explicit no-LLM heuristic baseline."
             )
 
         # 2. Honest AST & Memory-Driven Mutation Selection (offline / adaptive_local mode)

@@ -9,7 +9,7 @@ param(
     [switch]$ClearMemory
 )
 
-$venvPython = "C:\Users\LENOVO\OneDrive\Desktop\CS 401\.venv\Scripts\python.exe"
+$venvPython = Join-Path $PSScriptRoot "..\..\..\.venv\Scripts\python.exe"
 $pyCmd = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 $argsList = @(
