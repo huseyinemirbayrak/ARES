@@ -10,7 +10,7 @@ self_play:
   elo_k_factor: 32.0
   blind_attacker: false      # Hide unit test cases from AttackerAgent prompt
   blind_defender: false      # Hide failing test details from DefenderAgent prompt
-  strict_llm: false          # If true, never fall back to AST heuristics when LLM fails
+  strict_llm: true           # Stop with an error instead of falling back to AST heuristics; use --no-strict-llm for a labelled no-LLM baseline
 
 referee:
   deterministic: true
