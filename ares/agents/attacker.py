@@ -177,12 +177,16 @@ class AttackerAgent:
         code = payload.get("mutated_code", "")
         if not isinstance(code, str) or not code.strip():
             return False, "Missing or empty `mutated_code`"
-        if f"def {problem.function_name}" not in code:
-            return False, f"Function signature `def {problem.function_name}` missing"
         try:
-            ast.parse(code)
+            tree = ast.parse(code)
         except SyntaxError as exc:
             return False, f"SyntaxError in mutated_code: {exc}"
+        has_fn = any(
+            isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == problem.function_name
+            for n in ast.walk(tree)
+        )
+        if not has_fn:
+            return False, f"Function definition `def {problem.function_name}` missing in AST"
         if code.strip() == problem.clean_code.strip():
             return False, "mutated_code is identical to clean_code (no-op)"
         return True, "ok"

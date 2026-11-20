@@ -62,11 +62,26 @@ def _normalize_value(val: Any) -> Any:
     if isinstance(val, dict):
         return {str(k): _normalize_value(v) for k, v in val.items()}
     if isinstance(val, float):
+        if math.isnan(val):
+            return val
         if math.isinf(val):
             return "INF" if val > 0 else "-INF"
         return round(val, 6)
     return val
 
+
+def _strict_equal(a: Any, b: Any) -> bool:
+    """Compare normalized values strictly so Python `bool` (True/False) never matches `int` (1/0)."""
+    if type(a) is bool or type(b) is bool:
+        return type(a) is type(b) and a == b
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_strict_equal(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_strict_equal(a[k], b[k]) for k in a)
+    return bool(a == b)
+
+
+_SINGLE_RESULT_MARKER = "__ARES_SINGLE_RESULT__"
 
 _SUBPROCESS_RUNNER = """
 import inspect, json, math, sys
@@ -81,6 +96,8 @@ def _normalize(val):
     if isinstance(val, dict):
         return {str(k): _normalize(v) for k, v in val.items()}
     if isinstance(val, float):
+        if math.isnan(val):
+            return val
         if math.isinf(val):
             return "INF" if val > 0 else "-INF"
         return round(val, 6)
@@ -94,9 +111,9 @@ try:
     if setup_code:
         exec(compile(setup_code, "<ares_test_setup>", "exec"), env, env)
     actual = eval(compile(payload["call_expr"], "<ares_test_call>", "eval"), env, env)
-    print(json.dumps({"ok": True, "actual": _normalize(actual)}, default=repr))
+    print("\\n__ARES_SINGLE_RESULT__" + json.dumps({"ok": True, "actual": _normalize(actual)}, default=repr))
 except Exception as exc:
-    print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+    print("\\n__ARES_SINGLE_RESULT__" + json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
 """
 
 
@@ -108,6 +125,12 @@ _BLOCKED_MODULES: set[str] = {
     "socket",
     "http",
     "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "ftplib",
+    "smtplib",
+    "ssl",
     "ctypes",
     "importlib",
     "pickle",
@@ -119,6 +142,13 @@ _BLOCKED_MODULES: set[str] = {
     "webbrowser",
     "builtins",
     "inspect",
+    "io",
+    "tempfile",
+    "glob",
+    "gc",
+    "runpy",
+    "code",
+    "winreg",
 }
 
 _BLOCKED_CALLS: set[str] = {
@@ -180,6 +210,8 @@ def _normalize(val):
     if isinstance(val, dict):
         return {str(k): _normalize(v) for k, v in val.items()}
     if isinstance(val, float):
+        if math.isnan(val):
+            return val
         if math.isinf(val):
             return "INF" if val > 0 else "-INF"
         return round(val, 6)
@@ -299,19 +331,41 @@ def _run_single_test_isolated(
     except subprocess.TimeoutExpired:
         return False, None, f"TimeoutExceeded (> {timeout_seconds}s)", True
 
-    stdout = proc.stdout.strip()
-    if proc.returncode != 0 or not stdout:
+    stdout = proc.stdout
+    if proc.returncode != 0 or not stdout.strip():
         err = proc.stderr.strip() or f"ProcessExitedWithCode({proc.returncode})"
         return False, None, err, False
 
+    raw_json_str: str | None = None
+    for line in reversed(stdout.splitlines()):
+        if line.startswith(_SINGLE_RESULT_MARKER):
+            raw_json_str = line[len(_SINGLE_RESULT_MARKER) :]
+            break
+    if raw_json_str is None:
+        raw_json_str = stdout.strip().splitlines()[-1]
+
     try:
-        res = json.loads(stdout.splitlines()[-1])
+        res = json.loads(raw_json_str)
     except json.JSONDecodeError:
-        return False, None, f"InvalidRunnerOutput: {stdout[:200]}", False
+        return False, None, f"InvalidRunnerOutput: {stdout.strip()[:200]}", False
 
     if not res.get("ok"):
         return False, None, res.get("error", "UnknownExecutionError"), False
     return True, res.get("actual"), None, False
+
+
+_DEFAULT_REWARDS: dict[str, float] = {
+    "valid_attack_evaded_defender": 1.0,
+    "valid_attack_caught_by_defender": 0.25,
+    "invalid_attack_no_tests_broken": -0.8,
+    "invalid_attack_too_many_broken": -0.9,
+    "invalid_attack_syntax_error": -1.0,
+    "defender_full_repair_and_classify": 1.0,
+    "defender_full_repair_only": 0.75,
+    "defender_partial_repair": -0.3,
+    "defender_failed_repair": -0.8,
+    "defender_clean_passthrough": 0.5,
+}
 
 
 class DeterministicReferee:
@@ -323,11 +377,17 @@ class DeterministicReferee:
         max_broken_tests: int = 2,
         timeout_seconds: float = 3.0,
         elo_k_factor: float = 32.0,
+        rewards: dict[str, float] | None = None,
     ) -> None:
         self.min_broken_tests = min_broken_tests
         self.max_broken_tests = max_broken_tests
         self.timeout_seconds = timeout_seconds
         self.elo_k_factor = elo_k_factor
+        self.rewards: dict[str, float] = dict(_DEFAULT_REWARDS)
+        if rewards:
+            for k, v in rewards.items():
+                if k in self.rewards:
+                    self.rewards[k] = float(v)
 
     def execute_test_suite(
         self, code: str, test_cases: list[UnitTestCase]
@@ -398,7 +458,7 @@ class DeterministicReferee:
             else:
                 norm_actual = _normalize_value(actual)
                 norm_expected = _normalize_value(tc.expected_output)
-                passed = norm_actual == norm_expected
+                passed = _strict_equal(norm_actual, norm_expected)
                 err_msg = (
                     None
                     if passed
@@ -458,7 +518,7 @@ class DeterministicReferee:
 
         if not attacker_suite.syntax_valid or attacker_suite.timed_out:
             attack_validity = "invalid_syntax_or_timeout"
-        elif broken == 0:
+        elif broken < self.min_broken_tests:
             attack_validity = "invalid_no_op_attack"
         elif broken > self.max_broken_tests:
             attack_validity = "invalid_over_broken_attack"
@@ -474,7 +534,7 @@ class DeterministicReferee:
             ),
             None,
         )
-        if broken == 0:
+        if attacker_suite.syntax_valid and not attacker_suite.timed_out and broken == 0:
             ground_truth_defect: DefectCategory = "clean"
             ground_truth_source: Literal["curated", "ast_diff", "attacker_claim"] = "ast_diff"
         elif matched_curated is not None:
@@ -497,12 +557,16 @@ class DeterministicReferee:
         if attack_validity == "valid_subtle_attack":
             if defense_repaired_all:
                 winner = "defender"
-                attacker_reward = 0.25
-                defender_reward = 1.0 if classification_correct else 0.75
+                attacker_reward = self.rewards["valid_attack_caught_by_defender"]
+                defender_reward = (
+                    self.rewards["defender_full_repair_and_classify"]
+                    if classification_correct
+                    else self.rewards["defender_full_repair_only"]
+                )
                 attacker_feedback = (
                     f"[VALID ATTACK CAUGHT] Your mutation '{attacker_output.attack_strategy}' "
                     f"({attacker_output.injected_defect_type}) broke {broken}/{total} tests "
-                    f"({attacker_suite.failed_test_ids}), satisfying the 1-2 test rule, "
+                    f"({attacker_suite.failed_test_ids}), satisfying the {self.min_broken_tests}-{self.max_broken_tests} test rule, "
                     f"but Defender repaired all {total}/{total} tests. "
                     f"Try a less predictable defect category on {problem.function_name}."
                 )
@@ -514,8 +578,12 @@ class DeterministicReferee:
                 )
             else:
                 winner = "attacker"
-                attacker_reward = 1.0
-                defender_reward = -0.3 if classification_correct else -0.8
+                attacker_reward = self.rewards["valid_attack_evaded_defender"]
+                defender_reward = (
+                    self.rewards["defender_partial_repair"]
+                    if classification_correct
+                    else self.rewards["defender_failed_repair"]
+                )
                 attacker_feedback = (
                     f"[ATTACK WIN] Surgical defect '{attacker_output.attack_strategy}' "
                     f"({attacker_output.injected_defect_type}) broke {broken}/{total} tests "
@@ -530,24 +598,25 @@ class DeterministicReferee:
                 )
 
         elif attack_validity == "invalid_no_op_attack":
-            attacker_reward = -0.8
+            attacker_reward = self.rewards["invalid_attack_no_tests_broken"]
             if defense_repaired_all:
                 winner = "defender"
-                defender_reward = 0.5
+                defender_reward = self.rewards["defender_clean_passthrough"]
             else:
                 winner = "draw"
                 defender_reward = -0.5
             attacker_feedback = (
-                f"[INVALID NO-OP ATTACK] Your mutation broke 0/{total} tests. "
-                f"You MUST break 1 or 2 edge-case tests to score a valid attack."
+                f"[INVALID NO-OP ATTACK] Your mutation broke {broken}/{total} tests. "
+                f"You MUST break between {self.min_broken_tests} and {self.max_broken_tests} "
+                f"edge-case tests to score a valid attack."
             )
             defender_feedback = (
-                f"[NO-OP ATTACK HANDLED] Attacker broke 0/{total} tests; "
+                f"[NO-OP ATTACK HANDLED] Attacker broke {broken}/{total} tests; "
                 f"your output passed {defender_suite.passed_count}/{total} tests."
             )
 
         elif attack_validity == "invalid_over_broken_attack":
-            attacker_reward = -0.9
+            attacker_reward = self.rewards["invalid_attack_too_many_broken"]
             winner = "defender" if defense_repaired_all else "draw"
             defender_reward = 0.85 if defense_repaired_all else 0.0
             attacker_feedback = (
@@ -562,7 +631,7 @@ class DeterministicReferee:
             )
 
         else:  # invalid_syntax_or_timeout
-            attacker_reward = -1.0
+            attacker_reward = self.rewards["invalid_attack_syntax_error"]
             winner = "defender" if defense_repaired_all else "draw"
             defender_reward = 0.8 if defense_repaired_all else 0.0
             attacker_feedback = (

@@ -358,6 +358,39 @@ def _handle_inspect_memory(bundle_path: str) -> int:
     return 0
 
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_KNOWN_SUITE_ALIASES: set[str] = {
+    "quixbugs",
+    "quixbugs-master",
+    "agent_green",
+    "agent-green",
+    "agent-green-main",
+    "cleanvul",
+    "cleanvul-main",
+    "all_new",
+    "all-new",
+    "external_all",
+}
+
+
+def _resolve_dataset_arg(cli_val: str | None, yaml_val: Any) -> str | None:
+    """Resolve dataset path or suite alias with CLI taking precedence over game_config.yaml."""
+    if cli_val:
+        return cli_val
+    if not yaml_val:
+        return None
+    raw = str(yaml_val).strip()
+    if raw.rstrip("/\\").lower() in _KNOWN_SUITE_ALIASES:
+        return raw
+    candidate = Path(raw)
+    if candidate.exists():
+        return raw
+    repo_candidate = _REPO_ROOT / raw
+    if repo_candidate.exists():
+        return str(repo_candidate)
+    return raw
+
+
 def _resolve_strict_llm_mode(
     args: argparse.Namespace,
     raw_argv: list[str],
@@ -396,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     ref_cfg = game_cfg.get("referee", {})
     mem_cfg = game_cfg.get("memory", {})
     llm_cfg = game_cfg.get("llm", {})
+    ds_cfg = game_cfg.get("datasets", {})
 
     # 1. On-demand Dataset Validation Mode
     if args.validate_dataset:
@@ -413,281 +447,318 @@ def main(argv: list[str] | None = None) -> int:
             elif f.is_dir() and f.name in ("cognee_system", "cognee_data"):
                 shutil.rmtree(f, ignore_errors=True)
 
-    provider = infer_llm_provider(args.llm_mode, args.base_url, args.api_key)
+    explicit_base_url = any(
+        tok == "--base-url" or tok.startswith("--base-url=") for tok in effective_argv
+    )
+    attacker_base_url = args.base_url
+    defender_base_url = (
+        args.base_url
+        if explicit_base_url
+        else str(llm_cfg.get("defender_model", {}).get("base_url", args.base_url))
+    )
+    attacker_provider = infer_llm_provider(args.llm_mode, attacker_base_url, args.api_key)
+    defender_provider = infer_llm_provider(args.llm_mode, defender_base_url, args.api_key)
     resolved_embed_dims = _resolve_embedding_dimensions(
         args.embedding_dimensions,
         args.embedding_model,
         yaml_default=int(mem_cfg.get("cognee_embedding_dimensions", 768)),
     )
+    bundle_filename = (
+        Path(str(mem_cfg["portable_bundle_file"])).name
+        if mem_cfg.get("portable_bundle_file")
+        else "cognee_portable_graph.json"
+    )
     memory = CogneeMemoryManager(
         store_dir=memory_dir,
+        bundle_filename=bundle_filename,
         backend=args.memory_backend,
         in_context_window=int(sp_cfg.get("in_context_history_window", 6)),
-        llm_provider=provider,
+        llm_provider=defender_provider,
         llm_model=args.defender_model,
-        llm_endpoint=args.base_url,
+        llm_endpoint=defender_base_url,
         llm_api_key=args.api_key,
         embedding_provider=args.embedding_provider,
         embedding_model=args.embedding_model,
         embedding_dimensions=resolved_embed_dims,
         cognee_search_type=args.cognee_search_type,
         cognify_interval=args.cognify_interval,
+        top_k_memories=int(mem_cfg.get("top_k_memories", 4)),
+        auto_export=bool(mem_cfg.get("auto_export_portable_snapshot", True)),
     )
 
-    # 3. On-demand Standalone Import Mode
-    if args.import_only:
-        res = memory.import_portable_bundle(args.import_only, mode=args.import_mode)
-        memory.export_portable_bundle()  # Persist into active memory_store
+    try:
+        # 3. On-demand Standalone Import Mode
+        if args.import_only:
+            res = memory.import_portable_bundle(args.import_only, mode=args.import_mode)
+            memory.export_portable_bundle()  # Persist into active memory_store
+            console.print(
+                Panel.fit(
+                    f"[bold green]On-Demand ARES Memory Import Complete ({args.import_mode.upper()} mode)[/bold green]\n"
+                    f"• Source: `{args.import_only}` -> Active Store: `{memory.bundle_path}`\n"
+                    f"• Active Backend: `{memory.active_backend}` | Total KG Nodes: [bold]{res['total_nodes']}[/bold] | "
+                    f"Edges: [bold]{res['total_edges']}[/bold] | "
+                    f"Episodes: [bold]{res['total_episodes']}[/bold]\n"
+                    f"• Learned Defect Types: `{res['learned_defect_types']}`",
+                    border_style="green",
+                )
+            )
+            return 0
+
+        # 4. On-demand Standalone Export Mode
+        if args.export_only:
+            out_file = memory.export_portable_bundle(
+                args.export_only, role=args.export_role
+            )
+            console.print(
+                Panel.fit(
+                    f"[bold cyan]On-Demand ARES Memory Export Complete[/bold cyan]\n"
+                    f"• Exported To: `{out_file}` (Role: `{args.export_role}` | Backend: `{memory.active_backend}`)\n"
+                    f"• Total KG Nodes: [bold]{len(memory.nodes)}[/bold] | "
+                    f"Edges: [bold]{len(memory.edges)}[/bold] | "
+                    f"Episodes: [bold]{len(memory.episodes)}[/bold]",
+                    border_style="cyan",
+                )
+            )
+            return 0
+
+        # 5. Pre-run Memory Import (if requested alongside a self-play run)
+        if args.import_memory:
+            summary_loaded = memory.import_portable_bundle(
+                args.import_memory, mode=args.import_mode
+            )
+            console.print(
+                f"[bold cyan]Imported portable ARES memory bundle ({args.import_mode}):[/bold cyan] {summary_loaded}"
+            )
+        elif not args.fresh_memory and memory.loaded_preexisting_episodes > 0:
+            console.print(
+                f"[bold yellow]WARNING:[/bold yellow] Loaded {memory.loaded_preexisting_episodes} pre-existing "
+                f"episode(s) from `{memory.bundle_path}` (schema={memory.migrated_legacy_schema or 'current'}). "
+                f"Turn-0 baseline is NOT a cold start — pass `--fresh-memory` for a clean baseline experiment."
+            )
+
+        args.strict_llm = _resolve_strict_llm_mode(args, effective_argv, parser)
+
+        attacker_llm = LocalLLMClient(
+            provider=attacker_provider,
+            model_name=args.attacker_model,
+            base_url=attacker_base_url,
+            temperature=float(llm_cfg.get("attacker_model", {}).get("temperature", 0.7)),
+            mode=args.llm_mode,
+            timeout_seconds=args.llm_timeout,
+            api_key=args.api_key,
+            num_ctx=args.num_ctx,
+        )
+        defender_llm = LocalLLMClient(
+            provider=defender_provider,
+            model_name=args.defender_model,
+            base_url=defender_base_url,
+            temperature=float(llm_cfg.get("defender_model", {}).get("temperature", 0.2)),
+            mode=args.llm_mode,
+            timeout_seconds=args.llm_timeout,
+            api_key=args.api_key,
+            num_ctx=args.num_ctx,
+        )
+
+        attacker = AttackerAgent(
+            llm_client=attacker_llm,
+            blind_mode=args.blind_attacker,
+            strict_llm=args.strict_llm,
+        )
+        defender = DefenderAgent(
+            llm_client=defender_llm,
+            blind_mode=args.blind_defender,
+            strict_llm=args.strict_llm,
+        )
+        referee = DeterministicReferee(
+            min_broken_tests=int(ref_cfg.get("min_broken_tests_for_valid_attack", 1)),
+            max_broken_tests=int(ref_cfg.get("max_broken_tests_for_valid_attack", 2)),
+            timeout_seconds=float(ref_cfg.get("execution_timeout_seconds", 3.0)),
+            elo_k_factor=float(sp_cfg.get("elo_k_factor", 32.0)),
+            rewards=ref_cfg.get("rewards") if isinstance(ref_cfg.get("rewards"), dict) else None,
+        )
+
+        resolved_dataset = _resolve_dataset_arg(
+            args.dataset, ds_cfg.get("self_play_dataset_path")
+        )
+        resolved_exam_dataset = _resolve_dataset_arg(
+            args.exam_dataset, ds_cfg.get("external_exam_dataset_path")
+        )
+        problems = load_problems(path=resolved_dataset, exam=False)
+        exam_problems = load_problems(path=resolved_exam_dataset, exam=True)
+
+        arena_ids = {p.problem_id for p in problems}
+        arena_fns = {p.function_name for p in problems}
+        overlap_ids = sorted(arena_ids & {p.problem_id for p in exam_problems})
+        overlap_fns = sorted(arena_fns & {p.function_name for p in exam_problems})
+        if overlap_ids or overlap_fns:
+            console.print(
+                f"[bold yellow]WARNING:[/bold yellow] Arena dataset and External Exam suite overlap "
+                f"(problem_ids={overlap_ids[:5]}, functions={overlap_fns[:5]}). "
+                f"Pass a disjoint `--exam-dataset` for strict unseen generalization measurement."
+            )
+
+        backend_badge = (
+            "[bold green]REAL COGNEE SDK (add/cognify/search)[/bold green]"
+            if memory.active_backend == "cognee"
+            else "[bold yellow]LOCAL EPISODIC GRAPH (SQLite + AST/Diff)[/bold yellow]"
+        )
+
         console.print(
             Panel.fit(
-                f"[bold green]On-Demand ARES Memory Import Complete ({args.import_mode.upper()} mode)[/bold green]\n"
-                f"• Source: `{args.import_only}` -> Active Store: `{memory.bundle_path}`\n"
-                f"• Active Backend: `{memory.active_backend}` | Total KG Nodes: [bold]{res['total_nodes']}[/bold] | "
-                f"Edges: [bold]{res['total_edges']}[/bold] | "
-                f"Episodes: [bold]{res['total_episodes']}[/bold]\n"
-                f"• Learned Defect Types: `{res['learned_defect_types']}`",
+                f"[bold gold1]ARES: Plug-and-Play Adversarial Self-Play for Software Analysis[/bold gold1]\n"
+                f"Orchestrator: [bold green]Real LangGraph StateGraph + MemorySaver[/bold green] | "
+                f"Memory Backend: {backend_badge}\n"
+                f"Memory Status: [dim]{memory.backend_status_reason}[/dim]\n"
+                f"Referee: [bold cyan]100% Deterministic Subprocess-Isolated ({referee.min_broken_tests}-{referee.max_broken_tests} Broken Rule)[/bold cyan] | "
+                f"Strict LLM: [bold]{'ON' if args.strict_llm else 'OFF'}[/bold]\n"
+                f"Turns: [bold]{args.turns}[/bold] | External Exam Interval: [bold]{args.exam_interval}[/bold] | "
+                f"Blind Mode: Attacker=[bold]{'ON' if args.blind_attacker else 'OFF'}[/bold], "
+                f"Defender=[bold]{'ON' if args.blind_defender else 'OFF'}[/bold]\n"
+                f"Arena Dataset: [bold]{len(problems)} problems[/bold] (`{args.dataset or ds_cfg.get('self_play_dataset_path') or 'default MLCQ'}`) | "
+                f"External Exam Suite: [bold]{len(exam_problems)} problems[/bold] (`{args.exam_dataset or ds_cfg.get('external_exam_dataset_path') or 'default Exam'}`)",
+                border_style="gold1",
+            )
+        )
+
+        turn_table = Table(
+            title="Adversarial Self-Play Turn Log",
+            show_lines=False,
+            header_style="bold cyan",
+        )
+        turn_table.add_column("Turn", justify="right")
+        turn_table.add_column("Problem", style="bold")
+        turn_table.add_column("Injected Defect", style="yellow")
+        turn_table.add_column("Attacker Tests Broken", justify="center")
+        turn_table.add_column("Defender Tests Passed", justify="center")
+        turn_table.add_column("Classified?", justify="center")
+        turn_table.add_column("Winner", justify="center")
+        turn_table.add_column("ELO (Att / Def)", justify="right")
+
+        exam_records: list[ExamResult] = []
+
+        def handle_turn(rec: TurnRecord) -> None:
+            v = rec.verdict
+            att_broken = f"{v.attacker_suite_result.failed_count}/{v.attacker_suite_result.total_tests}"
+            def_passed = f"{v.defender_suite_result.passed_count}/{v.defender_suite_result.total_tests}"
+            winner_badge = (
+                "[bold red]ATTACKER[/bold red]"
+                if v.winner == "attacker"
+                else "[bold green]DEFENDER[/bold green]"
+                if v.winner == "defender"
+                else "[dim]DRAW[/dim]"
+            )
+            cls_badge = "[green]YES[/green]" if v.classification_correct else "[red]NO[/red]"
+            llm_tag = f"LLM(att={rec.attacker_output.used_llm},def={rec.defender_output.used_llm})"
+            console.print(
+                f"[dim]Turn {rec.turn_id:02d}[/dim] {rec.problem_id} | "
+                f"broken={att_broken} repaired={def_passed} | "
+                f"winner={winner_badge} | {llm_tag}"
+            )
+            turn_table.add_row(
+                str(rec.turn_id),
+                rec.problem_id,
+                rec.attacker_output.injected_defect_type,
+                att_broken,
+                def_passed,
+                cls_badge,
+                winner_badge,
+                f"{rec.attacker_elo_after:.0f} / {rec.defender_elo_after:.0f}",
+            )
+
+        def handle_exam(ex: ExamResult) -> None:
+            exam_records.append(ex)
+
+        orchestrator = ARESLangGraphOrchestrator(
+            problems=problems,
+            exam_problems=exam_problems,
+            attacker=attacker,
+            defender=defender,
+            referee=referee,
+            memory=memory,
+            output_dir=args.output_dir,
+            on_turn_complete=handle_turn,
+            on_exam_complete=handle_exam,
+            initial_elo=float(sp_cfg.get("elo_initial_rating", 1200.0)),
+        )
+
+        scoreboard = orchestrator.run_self_play(
+            num_turns=args.turns,
+            exam_interval=args.exam_interval,
+            run_baseline_exam=bool(sp_cfg.get("run_baseline_exam", True)),
+        )
+
+        if args.export_memory:
+            exported_path = memory.export_portable_bundle(
+                args.export_memory, role=args.export_role
+            )
+            console.print(
+                f"[bold green]Exported portable ARES memory bundle ({args.export_role}) to:[/bold green] {exported_path}"
+            )
+
+        console.print(turn_table)
+
+        exam_table = Table(
+            title="Periodic External Benchmark Exams ('Dışarıdan Sınavlar' - Unseen Code Suite)",
+            header_style="bold magenta",
+        )
+        exam_table.add_column("Exam ID", style="bold")
+        exam_table.add_column("After Turn", justify="right")
+        exam_table.add_column("Memory KG Nodes", justify="right")
+        exam_table.add_column("Attacker Valid 1-2 Broken (%)", justify="right")
+        exam_table.add_column("Defender Full Repair (%)", justify="right")
+        exam_table.add_column("Defender Classification (%)", justify="right")
+        exam_table.add_column("Defender Combined Score (%)", justify="right")
+
+        for ex in exam_records:
+            exam_table.add_row(
+                ex.exam_id,
+                str(ex.after_turn),
+                str(ex.cognee_knowledge_nodes),
+                f"{ex.attacker_valid_subtle_rate:.1f}%",
+                f"{ex.defender_full_repair_rate:.1f}%",
+                f"{ex.defender_classification_accuracy:.1f}%",
+                f"{ex.defender_combined_score:.1f}%",
+            )
+        console.print(exam_table)
+
+        imp = scoreboard.get("external_exam_improvement", {})
+        mem_sys = scoreboard.get("memory_system", scoreboard["cognee_portable_memory"])
+        llm_m = scoreboard.get("llm_usage_metrics", {})
+        if imp:
+            delta_block = (
+                f"• External Exam Delta (Turn {imp['baseline_turn']} -> Turn {imp['final_turn']}):\n"
+                f"  - Attacker Valid Subtle Attack Rate Delta: [bold cyan]{imp.get('attacker_valid_subtle_rate_delta', 0.0):+.2f}%[/bold cyan]\n"
+                f"  - Defender Full Repair Rate Delta:         [bold green]{imp.get('defender_full_repair_rate_delta', 0.0):+.2f}%[/bold green]\n"
+                f"  - Defender Classification Accuracy Delta:  [bold green]{imp.get('defender_classification_accuracy_delta', 0.0):+.2f}%[/bold green]\n"
+                f"  - Defender Combined Score Delta:           [bold gold1]{imp.get('defender_combined_score_delta', 0.0):+.2f}%[/bold gold1]"
+            )
+        else:
+            delta_block = (
+                "• External Exam Delta: [dim]N/A (fewer than 2 exams completed in this run)[/dim]"
+            )
+        console.print(
+            Panel.fit(
+                f"[bold green]Self-Play & External Exam Summary[/bold green]\n"
+                f"• Winner Scoreboard: Attacker Wins = [bold red]{scoreboard['attacker_wins']}[/bold red] | "
+                f"Defender Wins = [bold green]{scoreboard['defender_wins']}[/bold green] | "
+                f"Draws = {scoreboard['draws']}\n"
+                f"• Final ELO Ratings: Attacker = [bold]{scoreboard['attacker_final_elo']}[/bold] | "
+                f"Defender = [bold]{scoreboard['defender_final_elo']}[/bold]\n"
+                f"• Real LLM Usage: Attacker = [bold]{llm_m.get('attacker_llm_rate_pct', 0.0)}%[/bold] | "
+                f"Defender = [bold]{llm_m.get('defender_llm_rate_pct', 0.0)}%[/bold]\n"
+                f"• Active Memory Backend: [bold magenta]{mem_sys.get('active_backend', 'local_graph').upper()}[/bold magenta] "
+                f"(Real Cognee Ingests={mem_sys.get('cognee_ingested_turns', 0)}, Searches={mem_sys.get('cognee_search_calls', 0)})\n"
+                f"• Graph & Episodic Store: [bold]{mem_sys['total_nodes']} KG nodes[/bold], "
+                f"[bold]{mem_sys['total_edges']} edges[/bold], "
+                f"[bold]{mem_sys['total_episodes']} episodes[/bold]\n"
+                f"  Bundle saved at: `{mem_sys['bundle_path']}`\n"
+                f"{delta_block}",
                 border_style="green",
             )
         )
         return 0
-
-    # 4. On-demand Standalone Export Mode
-    if args.export_only:
-        out_file = memory.export_portable_bundle(
-            args.export_only, role=args.export_role
-        )
-        console.print(
-            Panel.fit(
-                f"[bold cyan]On-Demand ARES Memory Export Complete[/bold cyan]\n"
-                f"• Exported To: `{out_file}` (Role: `{args.export_role}` | Backend: `{memory.active_backend}`)\n"
-                f"• Total KG Nodes: [bold]{len(memory.nodes)}[/bold] | "
-                f"Edges: [bold]{len(memory.edges)}[/bold] | "
-                f"Episodes: [bold]{len(memory.episodes)}[/bold]",
-                border_style="cyan",
-            )
-        )
-        return 0
-
-    # 5. Pre-run Memory Import (if requested alongside a self-play run)
-    if args.import_memory:
-        summary_loaded = memory.import_portable_bundle(
-            args.import_memory, mode=args.import_mode
-        )
-        console.print(
-            f"[bold cyan]Imported portable ARES memory bundle ({args.import_mode}):[/bold cyan] {summary_loaded}"
-        )
-    elif not args.fresh_memory and memory.loaded_preexisting_episodes > 0:
-        console.print(
-            f"[bold yellow]WARNING:[/bold yellow] Loaded {memory.loaded_preexisting_episodes} pre-existing "
-            f"episode(s) from `{memory.bundle_path}` (schema={memory.migrated_legacy_schema or 'current'}). "
-            f"Turn-0 baseline is NOT a cold start — pass `--fresh-memory` for a clean baseline experiment."
-        )
-
-    args.strict_llm = _resolve_strict_llm_mode(args, effective_argv, parser)
-
-    attacker_llm = LocalLLMClient(
-        provider=provider,
-        model_name=args.attacker_model,
-        base_url=args.base_url,
-        temperature=float(llm_cfg.get("attacker_model", {}).get("temperature", 0.7)),
-        mode=args.llm_mode,
-        timeout_seconds=args.llm_timeout,
-        api_key=args.api_key,
-        num_ctx=args.num_ctx,
-    )
-    defender_llm = LocalLLMClient(
-        provider=provider,
-        model_name=args.defender_model,
-        base_url=args.base_url,
-        temperature=float(llm_cfg.get("defender_model", {}).get("temperature", 0.2)),
-        mode=args.llm_mode,
-        timeout_seconds=args.llm_timeout,
-        api_key=args.api_key,
-        num_ctx=args.num_ctx,
-    )
-
-    attacker = AttackerAgent(
-        llm_client=attacker_llm,
-        blind_mode=args.blind_attacker,
-        strict_llm=args.strict_llm,
-    )
-    defender = DefenderAgent(
-        llm_client=defender_llm,
-        blind_mode=args.blind_defender,
-        strict_llm=args.strict_llm,
-    )
-    referee = DeterministicReferee(
-        min_broken_tests=int(ref_cfg.get("min_broken_tests_for_valid_attack", 1)),
-        max_broken_tests=int(ref_cfg.get("max_broken_tests_for_valid_attack", 2)),
-        timeout_seconds=float(ref_cfg.get("execution_timeout_seconds", 3.0)),
-        elo_k_factor=float(sp_cfg.get("elo_k_factor", 32.0)),
-    )
-
-    problems = load_problems(path=args.dataset, exam=False)
-    exam_problems = load_problems(path=args.exam_dataset, exam=True)
-
-    arena_ids = {p.problem_id for p in problems}
-    arena_fns = {p.function_name for p in problems}
-    overlap_ids = sorted(arena_ids & {p.problem_id for p in exam_problems})
-    overlap_fns = sorted(arena_fns & {p.function_name for p in exam_problems})
-    if overlap_ids or overlap_fns:
-        console.print(
-            f"[bold yellow]WARNING:[/bold yellow] Arena dataset and External Exam suite overlap "
-            f"(problem_ids={overlap_ids[:5]}, functions={overlap_fns[:5]}). "
-            f"Pass a disjoint `--exam-dataset` for strict unseen generalization measurement."
-        )
-
-    backend_badge = (
-        "[bold green]REAL COGNEE SDK (add/cognify/search)[/bold green]"
-        if memory.active_backend == "cognee"
-        else "[bold yellow]LOCAL EPISODIC GRAPH (SQLite + AST/Diff)[/bold yellow]"
-    )
-
-    console.print(
-        Panel.fit(
-            f"[bold gold1]ARES: Plug-and-Play Adversarial Self-Play for Software Analysis[/bold gold1]\n"
-            f"Orchestrator: [bold green]Real LangGraph StateGraph + MemorySaver[/bold green] | "
-            f"Memory Backend: {backend_badge}\n"
-            f"Memory Status: [dim]{memory.backend_status_reason}[/dim]\n"
-            f"Referee: [bold cyan]100% Deterministic Subprocess-Isolated (1-2 Broken Rule)[/bold cyan] | "
-            f"Strict LLM: [bold]{'ON' if args.strict_llm else 'OFF'}[/bold]\n"
-            f"Turns: [bold]{args.turns}[/bold] | External Exam Interval: [bold]{args.exam_interval}[/bold] | "
-            f"Blind Mode: Attacker=[bold]{'ON' if args.blind_attacker else 'OFF'}[/bold], "
-            f"Defender=[bold]{'ON' if args.blind_defender else 'OFF'}[/bold]\n"
-            f"Arena Dataset: [bold]{len(problems)} problems[/bold] (`{args.dataset or 'default MLCQ'}`) | "
-            f"External Exam Suite: [bold]{len(exam_problems)} problems[/bold] (`{args.exam_dataset or 'default Exam'}`)",
-            border_style="gold1",
-        )
-    )
-
-    turn_table = Table(
-        title="Adversarial Self-Play Turn Log",
-        show_lines=False,
-        header_style="bold cyan",
-    )
-    turn_table.add_column("Turn", justify="right")
-    turn_table.add_column("Problem", style="bold")
-    turn_table.add_column("Injected Defect", style="yellow")
-    turn_table.add_column("Attacker Tests Broken", justify="center")
-    turn_table.add_column("Defender Tests Passed", justify="center")
-    turn_table.add_column("Classified?", justify="center")
-    turn_table.add_column("Winner", justify="center")
-    turn_table.add_column("ELO (Att / Def)", justify="right")
-
-    exam_records: list[ExamResult] = []
-
-    def handle_turn(rec: TurnRecord) -> None:
-        v = rec.verdict
-        att_broken = f"{v.attacker_suite_result.failed_count}/{v.attacker_suite_result.total_tests}"
-        def_passed = f"{v.defender_suite_result.passed_count}/{v.defender_suite_result.total_tests}"
-        winner_badge = (
-            "[bold red]ATTACKER[/bold red]"
-            if v.winner == "attacker"
-            else "[bold green]DEFENDER[/bold green]"
-            if v.winner == "defender"
-            else "[dim]DRAW[/dim]"
-        )
-        cls_badge = "[green]YES[/green]" if v.classification_correct else "[red]NO[/red]"
-        llm_tag = f"LLM(att={rec.attacker_output.used_llm},def={rec.defender_output.used_llm})"
-        console.print(
-            f"[dim]Turn {rec.turn_id:02d}[/dim] {rec.problem_id} | "
-            f"broken={att_broken} repaired={def_passed} | "
-            f"winner={winner_badge} | {llm_tag}"
-        )
-        turn_table.add_row(
-            str(rec.turn_id),
-            rec.problem_id,
-            rec.attacker_output.injected_defect_type,
-            att_broken,
-            def_passed,
-            cls_badge,
-            winner_badge,
-            f"{rec.attacker_elo_after:.0f} / {rec.defender_elo_after:.0f}",
-        )
-
-    def handle_exam(ex: ExamResult) -> None:
-        exam_records.append(ex)
-
-    orchestrator = ARESLangGraphOrchestrator(
-        problems=problems,
-        exam_problems=exam_problems,
-        attacker=attacker,
-        defender=defender,
-        referee=referee,
-        memory=memory,
-        output_dir=args.output_dir,
-        on_turn_complete=handle_turn,
-        on_exam_complete=handle_exam,
-    )
-
-    scoreboard = orchestrator.run_self_play(
-        num_turns=args.turns,
-        exam_interval=args.exam_interval,
-        run_baseline_exam=True,
-    )
-
-    if args.export_memory:
-        exported_path = memory.export_portable_bundle(
-            args.export_memory, role=args.export_role
-        )
-        console.print(
-            f"[bold green]Exported portable ARES memory bundle ({args.export_role}) to:[/bold green] {exported_path}"
-        )
-
-    console.print(turn_table)
-
-    exam_table = Table(
-        title="Periodic External Benchmark Exams ('Dışarıdan Sınavlar' - Unseen Code Suite)",
-        header_style="bold magenta",
-    )
-    exam_table.add_column("Exam ID", style="bold")
-    exam_table.add_column("After Turn", justify="right")
-    exam_table.add_column("Memory KG Nodes", justify="right")
-    exam_table.add_column("Attacker Valid 1-2 Broken (%)", justify="right")
-    exam_table.add_column("Defender Full Repair (%)", justify="right")
-    exam_table.add_column("Defender Classification (%)", justify="right")
-    exam_table.add_column("Defender Combined Score (%)", justify="right")
-
-    for ex in exam_records:
-        exam_table.add_row(
-            ex.exam_id,
-            str(ex.after_turn),
-            str(ex.cognee_knowledge_nodes),
-            f"{ex.attacker_valid_subtle_rate:.1f}%",
-            f"{ex.defender_full_repair_rate:.1f}%",
-            f"{ex.defender_classification_accuracy:.1f}%",
-            f"{ex.defender_combined_score:.1f}%",
-        )
-    console.print(exam_table)
-
-    imp = scoreboard.get("external_exam_improvement", {})
-    mem_sys = scoreboard.get("memory_system", scoreboard["cognee_portable_memory"])
-    llm_m = scoreboard.get("llm_usage_metrics", {})
-    console.print(
-        Panel.fit(
-            f"[bold green]Self-Play & External Exam Summary[/bold green]\n"
-            f"• Winner Scoreboard: Attacker Wins = [bold red]{scoreboard['attacker_wins']}[/bold red] | "
-            f"Defender Wins = [bold green]{scoreboard['defender_wins']}[/bold green] | "
-            f"Draws = {scoreboard['draws']}\n"
-            f"• Final ELO Ratings: Attacker = [bold]{scoreboard['attacker_final_elo']}[/bold] | "
-            f"Defender = [bold]{scoreboard['defender_final_elo']}[/bold]\n"
-            f"• Real LLM Usage: Attacker = [bold]{llm_m.get('attacker_llm_rate_pct', 0.0)}%[/bold] | "
-            f"Defender = [bold]{llm_m.get('defender_llm_rate_pct', 0.0)}%[/bold]\n"
-            f"• Active Memory Backend: [bold magenta]{mem_sys.get('active_backend', 'local_graph').upper()}[/bold magenta] "
-            f"(Real Cognee Ingests={mem_sys.get('cognee_ingested_turns', 0)}, Searches={mem_sys.get('cognee_search_calls', 0)})\n"
-            f"• Graph & Episodic Store: [bold]{mem_sys['total_nodes']} KG nodes[/bold], "
-            f"[bold]{mem_sys['total_edges']} edges[/bold], "
-            f"[bold]{mem_sys['total_episodes']} episodes[/bold]\n"
-            f"  Bundle saved at: `{mem_sys['bundle_path']}`\n"
-            f"• External Exam Delta (Turn {imp.get('baseline_turn', 0)} -> Turn {imp.get('final_turn', args.turns)}):\n"
-            f"  - Attacker Valid Subtle Attack Rate Delta: [bold cyan]{imp.get('attacker_valid_subtle_rate_delta', 0.0):+.2f}%[/bold cyan]\n"
-            f"  - Defender Full Repair Rate Delta:         [bold green]{imp.get('defender_full_repair_rate_delta', 0.0):+.2f}%[/bold green]\n"
-            f"  - Defender Classification Accuracy Delta:  [bold green]{imp.get('defender_classification_accuracy_delta', 0.0):+.2f}%[/bold green]\n"
-            f"  - Defender Combined Score Delta:           [bold gold1]{imp.get('defender_combined_score_delta', 0.0):+.2f}%[/bold gold1]",
-            border_style="green",
-        )
-    )
-    return 0
+    finally:
+        memory.close()
 
 
 if __name__ == "__main__":

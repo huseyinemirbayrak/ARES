@@ -21,6 +21,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -75,12 +76,16 @@ class CogneeMemoryManager:
         embedding_dimensions: int = 768,
         cognee_search_type: str = "CHUNKS",
         cognify_interval: int = 1,
+        top_k_memories: int = 4,
+        auto_export: bool = True,
     ) -> None:
         self.store_dir = Path(store_dir)
         self.store_dir.mkdir(parents=True, exist_ok=True)
         self.bundle_path = self.store_dir / bundle_filename
         self.sqlite_path = self.store_dir / "ares_episodic_graph.sqlite3"
         self.in_context_window = in_context_window
+        self.top_k_memories = max(1, int(top_k_memories))
+        self.auto_export = bool(auto_export)
         self.cognify_interval = max(1, cognify_interval)
         self._pending_cognee_turns = 0
         self.requested_backend = backend if enable_native_cognee else "local_graph"
@@ -269,7 +274,14 @@ class CogneeMemoryManager:
                 blind_defender=blind_defender,
             )
 
-        episode_id = f"ep_turn_{turn_id:04d}_{problem.problem_id}"
+        base_episode_id = f"ep_turn_{turn_id:04d}_{problem.problem_id}"
+        existing_ids = {ep.get("episode_id") for ep in self.episodes}
+        episode_id = base_episode_id
+        if episode_id in existing_ids:
+            suffix = 2
+            while f"{base_episode_id}_r{suffix}" in existing_ids:
+                suffix += 1
+            episode_id = f"{base_episode_id}_r{suffix}"
         prob_node_id = f"problem:{problem.problem_id}"
         defect_node_id = f"defect:{verdict.ground_truth_defect}"
         strat_key = f"{problem.problem_id}::{attacker_output.attack_strategy}"
@@ -357,6 +369,7 @@ class CogneeMemoryManager:
             "function_name": problem.function_name,
             "mlcq_category": problem.mlcq_category,
             "ast_features": reflexion.ast_features,
+            "ground_truth_defect": verdict.ground_truth_defect,
             "injected_defect_type": attacker_output.injected_defect_type,
             "attack_strategy": attacker_output.attack_strategy,
             "targeted_edge_case": attacker_output.targeted_edge_case,
@@ -499,8 +512,13 @@ class CogneeMemoryManager:
                 if self._pending_cognee_turns >= self.cognify_interval:
                     self.flush_cognee()
 
-        self.export_portable_bundle(self.bundle_path)
+        if self.auto_export:
+            self.export_portable_bundle(self.bundle_path)
         return [episode_id, prob_node_id, defect_node_id, strat_node_id, repair_node_id]
+
+    def close(self) -> None:
+        """Cleanly release background Cognee resources."""
+        self.cognee_engine.close()
 
     def flush_cognee(self) -> bool:
         """Cognify any staged Cognee lessons in a single batched pass (e.g. before exams or end of run)."""
@@ -561,7 +579,7 @@ class CogneeMemoryManager:
                         ep["episode_id"],
                         ep.get("turn_id", 0),
                         ep.get("problem_id", ""),
-                        ep.get("injected_defect_type", "off_by_one_boundary"),
+                        ep.get("ground_truth_defect") or ep.get("injected_defect_type", "off_by_one_boundary"),
                         ep.get("attack_validity", "valid_subtle_attack"),
                         ep.get("winner", "draw"),
                         float(ep.get("attacker_reward", 0.0)),
@@ -573,9 +591,10 @@ class CogneeMemoryManager:
             conn.commit()
 
     def retrieve_attacker_memories(
-        self, problem: CodeProblem, top_k: int = 4
+        self, problem: CodeProblem, top_k: int | None = None
     ) -> list[str]:
         """Retrieve actionable attack diffs & reflexions via Real Cognee + AST structural similarity."""
+        k = self.top_k_memories if top_k is None else max(1, int(top_k))
         memories: list[str] = []
         query_features = set(extract_ast_features(problem.clean_code))
         query_tokens = _tokenize(problem.clean_code + " " + problem.description)
@@ -589,7 +608,7 @@ class CogneeMemoryManager:
                 f"functions with AST patterns [{', '.join(sorted(query_features))}]: {problem.description}"
             )
             cognee_hits = self.cognee_engine.search_lessons(
-                RealCogneeEngine.ATTACKER_DATASET, cognee_query, top_k=max(2, top_k // 2)
+                RealCogneeEngine.ATTACKER_DATASET, cognee_query, top_k=max(2, k // 2)
             )
             if cognee_hits:
                 self.cognee_search_count += 1
@@ -613,7 +632,7 @@ class CogneeMemoryManager:
             scored_eps.append((score, ep))
 
         scored_eps.sort(key=lambda x: x[0], reverse=True)
-        for _, ep in scored_eps[:top_k]:
+        for _, ep in scored_eps[:k]:
             lesson = ep.get("attacker_lesson") or (
                 f"[Episode {ep['episode_id']}] `{ep['function_name']}` ({ep['injected_defect_type']}): "
                 f"validity={ep['attack_validity']}, winner={ep['winner']}."
@@ -626,16 +645,17 @@ class CogneeMemoryManager:
             if ic not in memories:
                 memories.append(ic)
 
-        return memories[: top_k + 2]
+        return memories[: k + 2]
 
     def retrieve_defender_memories(
         self,
         problem: CodeProblem,
         mutated_code: str,
         failed_test_ids: list[str] | None = None,
-        top_k: int = 4,
+        top_k: int | None = None,
     ) -> list[str]:
         """Retrieve verified repair diffs & failure reflexions via Real Cognee + AST similarity."""
+        k = self.top_k_memories if top_k is None else max(1, int(top_k))
         memories: list[str] = []
         code_features = set(extract_ast_features(mutated_code))
         code_tokens = _tokenize(mutated_code + " " + problem.description)
@@ -649,7 +669,7 @@ class CogneeMemoryManager:
                 f"[{', '.join(sorted(code_features))}]: {problem.description}"
             )
             cognee_hits = self.cognee_engine.search_lessons(
-                RealCogneeEngine.DEFENDER_DATASET, cognee_query, top_k=max(2, top_k // 2)
+                RealCogneeEngine.DEFENDER_DATASET, cognee_query, top_k=max(2, k // 2)
             )
             if cognee_hits:
                 self.cognee_search_count += 1
@@ -670,7 +690,7 @@ class CogneeMemoryManager:
             scored_eps.append((score, ep))
 
         scored_eps.sort(key=lambda x: x[0], reverse=True)
-        for _, ep in scored_eps[:top_k]:
+        for _, ep in scored_eps[:k]:
             lesson = ep.get("defender_lesson") or (
                 f"[Episode {ep['episode_id']}] `{ep['function_name']}` defect='{ep['injected_defect_type']}'."
             )
@@ -682,7 +702,7 @@ class CogneeMemoryManager:
             if ic not in memories:
                 memories.append(ic)
 
-        return memories[: top_k + 2]
+        return memories[: k + 2]
 
     def get_experience_level(self) -> int:
         """Return total number of recorded episodes or learned knowledge encounters."""
@@ -764,12 +784,15 @@ class CogneeMemoryManager:
                         if sub_dir.exists():
                             for fp in sub_dir.rglob("*"):
                                 if fp.is_file():
-                                    zf.write(fp, arcname=str(fp.relative_to(self.store_dir)))
+                                    zf.write(fp, arcname=fp.relative_to(self.store_dir).as_posix())
             return out_path
 
-        out_path.write_text(
+        # Atomic write to avoid corrupting portable JSON on mid-run interruption
+        tmp_out = out_path.with_suffix(out_path.suffix + ".tmp")
+        tmp_out.write_text(
             json.dumps(bundle, indent=2, ensure_ascii=False), encoding="utf-8"
         )
+        os.replace(tmp_out, out_path)
         return out_path
 
     def import_portable_bundle(
@@ -783,17 +806,26 @@ class CogneeMemoryManager:
             raise FileNotFoundError(f"Portable memory bundle not found: {in_path}")
 
         if in_path.suffix.lower() == ".zip":
+            store_root = self.store_dir.resolve()
             with zipfile.ZipFile(in_path, "r") as zf:
                 raw_json = zf.read("cognee_portable_graph.json").decode("utf-8")
                 bundle = json.loads(raw_json)
                 if mode == "replace":
                     for member in zf.namelist():
-                        if member.startswith(("cognee_system/", "cognee_data/")) and not member.endswith("/"):
-                            dest = self.store_dir / member
+                        norm_member = member.replace("\\", "/")
+                        if (
+                            norm_member.startswith(("cognee_system/", "cognee_data/"))
+                            and not norm_member.endswith("/")
+                        ):
+                            dest = (store_root / norm_member).resolve()
+                            if not dest.is_relative_to(store_root):
+                                raise ValueError(
+                                    f"Unsafe path traversal entry detected in portable bundle: {member!r}"
+                                )
                             dest.parent.mkdir(parents=True, exist_ok=True)
                             with zf.open(member) as src, dest.open("wb") as dst:
                                 shutil.copyfileobj(src, dst)
-                            if member.startswith("cognee_system/"):
+                            if norm_member.startswith("cognee_system/"):
                                 self._has_persisted_cognee_graph = True
         else:
             bundle = json.loads(in_path.read_text(encoding="utf-8"))
@@ -860,10 +892,12 @@ class CogneeMemoryManager:
                     for clue in dknow.get("known_code_clues", []):
                         if clue not in cur_clues:
                             cur_clues.append(clue)
+                    cur_d["known_code_clues"] = cur_clues[-8:]
                     cur_diffs = cur_d.setdefault("verified_repair_diffs", [])
                     for diff in dknow.get("verified_repair_diffs", []):
                         if diff not in cur_diffs:
                             cur_diffs.append(diff)
+                    cur_d["verified_repair_diffs"] = cur_diffs[-8:]
                     cur_d.setdefault("verified_repairs", {}).update(dknow.get("verified_repairs", {}))
             existing_ep_ids = {ep["episode_id"] for ep in self.episodes}
             newly_merged_eps: list[dict[str, Any]] = []

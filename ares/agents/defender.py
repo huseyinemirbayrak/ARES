@@ -196,12 +196,16 @@ class DefenderAgent:
         code = payload.get("repaired_code", "")
         if not isinstance(code, str) or not code.strip():
             return False, "Missing or empty `repaired_code`"
-        if f"def {problem.function_name}" not in code:
-            return False, f"Function signature `def {problem.function_name}` missing"
         try:
-            ast.parse(code)
+            tree = ast.parse(code)
         except SyntaxError as exc:
             return False, f"SyntaxError in repaired_code: {exc}"
+        has_fn = any(
+            isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == problem.function_name
+            for n in ast.walk(tree)
+        )
+        if not has_fn:
+            return False, f"Function definition `def {problem.function_name}` missing in AST"
         if attacker_suite.failed_count > 0 and code.strip() == mutated_code.strip():
             return False, "repaired_code is identical to defective mutated_code while tests are failing"
         return True, "ok"
@@ -210,13 +214,16 @@ class DefenderAgent:
         self, payload: dict[str, Any], problem: CodeProblem
     ) -> bool:
         code = payload.get("repaired_code", "")
-        if not isinstance(code, str) or not code or f"def {problem.function_name}" not in code:
+        if not isinstance(code, str) or not code.strip():
             return False
         try:
-            ast.parse(code)
+            tree = ast.parse(code)
         except SyntaxError:
             return False
-        return True
+        return any(
+            isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == problem.function_name
+            for n in ast.walk(tree)
+        )
 
     def _diagnose_defect(
         self, mutated_code: str, attacker_suite: SuiteExecutionResult
@@ -306,6 +313,13 @@ class DefenderAgent:
         memory: CogneeMemoryManager,
     ) -> tuple[str, DefectCategory, str]:
         """Synthesize AST repairs honestly (no ground-truth leak; no test-running in blind mode)."""
+        if predicted_defect == "clean":
+            return (
+                mutated_code,
+                "clean",
+                "All unit tests already pass; preserved clean code unchanged.",
+            )
+
         # 1. Reuse ONLY genuinely verified repairs produced by Defender in earlier turns
         d_know = memory.defender_repair_knowledge.get(predicted_defect, {})
         verified_map = d_know.get("verified_repairs", {})

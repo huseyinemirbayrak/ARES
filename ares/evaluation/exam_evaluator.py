@@ -115,7 +115,14 @@ class ExternalExamEvaluator:
                 and not def_suite.timed_out
                 and def_suite.failed_count == 0
             )
-            classified_ok = def_out.predicted_defect_type == canonical_mut.defect_type
+            expected_defect = (
+                "clean"
+                if canonical_suite.syntax_valid
+                and not canonical_suite.timed_out
+                and canonical_suite.failed_count == 0
+                else canonical_mut.defect_type
+            )
+            classified_ok = def_out.predicted_defect_type == expected_defect
 
             if repaired_all:
                 full_repairs += 1
@@ -129,7 +136,7 @@ class ExternalExamEvaluator:
                     "attacker_broken_tests": att_suite.failed_count,
                     "attacker_valid_subtle": is_valid_subtle,
                     "attacker_used_llm": att_out.used_llm,
-                    "ground_truth_defect": canonical_mut.defect_type,
+                    "ground_truth_defect": expected_defect,
                     "defender_predicted_defect": def_out.predicted_defect_type,
                     "defender_classification_correct": classified_ok,
                     "defender_repaired_all_5_tests": repaired_all,

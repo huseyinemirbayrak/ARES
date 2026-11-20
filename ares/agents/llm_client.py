@@ -29,10 +29,15 @@ def _is_embedding_model(name: str) -> bool:
 
 
 def extract_json_object(raw_text: str) -> dict[str, Any]:
-    """Robustly extract a JSON object from an LLM response, handling multi-fence outputs and nested braces."""
+    """Robustly extract a JSON object from an LLM response, handling reasoning tags, multi-fence outputs, and nested braces."""
     cleaned = raw_text.strip()
     if not cleaned:
         raise json.JSONDecodeError("Empty LLM response", raw_text, 0)
+
+    # Strip `<think>...</think>` reasoning blocks (e.g., Qwen3 / DeepSeek-R1) when content exists outside them
+    stripped_think = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL | re.IGNORECASE).strip()
+    if stripped_think:
+        cleaned = stripped_think
 
     # 1. Fast path: entire response is valid JSON
     try:
@@ -122,11 +127,13 @@ class LocalLLMClient:
         self.mode = mode.lower()
         self.timeout_seconds = timeout_seconds
         self.num_ctx = max(2048, int(num_ctx))
-        self.api_key = (
-            api_key
-            or os.environ.get("LLM_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-        )
+        if api_key:
+            self.api_key: str | None = api_key
+        elif self.provider == "ollama":
+            self.api_key = None
+        else:
+            env_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            self.api_key = env_key if env_key and env_key != "ollama" else None
         self._server_reachable: bool | None = None
         self.last_error: str | None = None
 

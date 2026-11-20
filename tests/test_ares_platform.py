@@ -794,3 +794,215 @@ def test_provider_inference_embedding_dims_and_persistent_cognee_loop(
     engine.close()
     assert r1[0] == 1 and r2[0] == 2
     assert r1[1] == r2[1]
+
+
+def test_referee_strict_bool_int_min_broken_and_stdout_noise() -> None:
+    """Verify bool != int, min_broken_tests > 1 enforcement, and noisy stdout safety in single runner."""
+    from ares.models import UnitTestCase
+    from ares.referee.deterministic_referee import _run_single_test_isolated
+
+    referee = DeterministicReferee(min_broken_tests=2, max_broken_tests=3)
+    tc_bool = UnitTestCase(
+        test_id="T1",
+        description="Must return bool True, not int 1",
+        call_expr="is_pos(5)",
+        expected_output=True,
+    )
+    res_int = referee.execute_test_suite("def is_pos(x):\n    return 1\n", [tc_bool])
+    assert res_int.failed_count == 1
+    res_bool = referee.execute_test_suite("def is_pos(x):\n    return True\n", [tc_bool])
+    assert res_bool.failed_count == 0
+
+    # Single-test subprocess must ignore print(..., end='') noise before result marker
+    ok, actual, err, timed_out = _run_single_test_isolated(
+        "def noisy(x):\n    print('debug', end='')\n    return x * 2\n",
+        "noisy(21)",
+        timeout_seconds=3.0,
+    )
+    assert ok is True and actual == 42 and err is None and timed_out is False
+
+    # Enforce min_broken_tests=2: a 1-broken mutation must be rejected as invalid_no_op_attack
+    problem = load_problems(exam=False)[0]
+    one_broken_mut = problem.candidate_mutations[0]
+    att_out = AttackerOutput(
+        mutated_code=one_broken_mut.mutated_code,
+        injected_defect_type=one_broken_mut.defect_type,
+        targeted_edge_case=one_broken_mut.targeted_edge_case,
+        attack_strategy=one_broken_mut.strategy_name,
+        explanation=one_broken_mut.explanation,
+    )
+    def_out = DefenderOutput(
+        is_defective=True,
+        predicted_defect_type=one_broken_mut.defect_type,
+        defect_location_line=1,
+        diagnosis="Fix",
+        defense_strategy="Fix",
+        repaired_code=problem.clean_code,
+    )
+    verdict = referee.evaluate_turn(1, problem, att_out, def_out)
+    assert verdict.attacker_suite_result.failed_count == 1
+    assert verdict.attack_validity == "invalid_no_op_attack"
+
+
+def test_memory_zip_slip_blocked_and_resumed_episode_ids_unique(tmp_path: Path) -> None:
+    """Verify zip-slip traversal entries are rejected and resumed runs produce unique episode IDs."""
+    import json
+    import sqlite3
+    import zipfile
+    import pytest
+
+    bad_zip = tmp_path / "evil.zip"
+    with zipfile.ZipFile(bad_zip, "w") as zf:
+        zf.writestr("cognee_portable_graph.json", json.dumps({"schema_version": "ares-memory-portable-3.0"}))
+        zf.writestr("cognee_system/../../escaped.txt", "pwned")
+
+    mem = CogneeMemoryManager(store_dir=tmp_path / "safe_store", backend="local_graph")
+    with pytest.raises(ValueError, match="Unsafe path traversal"):
+        mem.import_portable_bundle(bad_zip, mode="replace")
+    assert not (tmp_path / "escaped.txt").exists()
+
+    # Recording turn_id=1 twice across resumed runs must keep unique episode IDs and SQLite in sync
+    problem = load_problems(exam=False)[0]
+    mut = problem.candidate_mutations[0]
+    referee = DeterministicReferee()
+    att = AttackerOutput(
+        mutated_code=mut.mutated_code,
+        injected_defect_type=mut.defect_type,
+        targeted_edge_case=mut.targeted_edge_case,
+        attack_strategy=mut.strategy_name,
+        explanation=mut.explanation,
+    )
+    dfn = DefenderOutput(
+        is_defective=True,
+        predicted_defect_type=mut.defect_type,
+        defect_location_line=4,
+        diagnosis="Fix",
+        defense_strategy="Fix",
+        repaired_code=problem.clean_code,
+    )
+    verdict = referee.evaluate_turn(1, problem, att, dfn)
+    ids1 = mem.record_turn_memory(1, problem, att, dfn, verdict)
+    ids2 = mem.record_turn_memory(1, problem, att, dfn, verdict)
+    assert ids1[0] != ids2[0]
+    assert len(mem.episodes) == 2
+    with sqlite3.connect(mem.sqlite_path) as conn:
+        ep_count = conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0]
+    assert ep_count == 2
+
+
+def test_defender_preserves_clean_code_and_ast_fn_validation(tmp_path: Path) -> None:
+    """Verify blind Defender does not corrupt clean code and LLM validation checks true AST FunctionDef."""
+    problem = load_problems(exam=False)[0]
+    referee = DeterministicReferee()
+    clean_suite = referee.execute_test_suite(problem.clean_code, problem.test_cases)
+    assert clean_suite.failed_count == 0
+
+    mem = CogneeMemoryManager(store_dir=tmp_path / "clean_def_mem", backend="local_graph")
+    blind_def = DefenderAgent(llm_client=LocalLLMClient(mode="adaptive_local"), blind_mode=True)
+    out = blind_def.defend(problem, problem.clean_code, clean_suite, mem, turn_id=1)
+    assert out.predicted_defect_type == "clean"
+    assert out.repaired_code == problem.clean_code
+
+    # Comment or prefix-spoofed function names must be rejected by AST validation
+    attacker = AttackerAgent(llm_client=LocalLLMClient(mode="adaptive_local"))
+    ok_comment, _ = attacker._validate_llm_attack_reason(
+        {"mutated_code": f"# def {problem.function_name}\ndef other(x): return x\n"},
+        problem,
+    )
+    ok_prefix, _ = attacker._validate_llm_attack_reason(
+        {"mutated_code": f"def {problem.function_name}_extra(x): return x\n"},
+        problem,
+    )
+    assert ok_comment is False
+    assert ok_prefix is False
+
+
+def test_extract_json_strips_think_tags_and_adapter_preserves_setup_code(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Verify <think> tag stripping, Ollama key non-leakage, adapter setup_code, `is None`, and empty YAML."""
+    import json
+    from ares.agents.llm_client import extract_json_object
+    from ares.memory.cognee_engine import RealCogneeEngine
+
+    raw = (
+        '<think>Maybe {"mutated_code": "def draft(): pass"}</think>\n'
+        '{"mutated_code": "def final(): return 1", "expected_failing_tests": 1}'
+    )
+    parsed = extract_json_object(raw)
+    assert parsed["mutated_code"] == "def final(): return 1"
+
+    # Host OPENAI_API_KEY must never leak into local Ollama clients/engines
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-host-secret")
+    ollama_client = LocalLLMClient(provider="ollama", mode="ollama")
+    assert ollama_client.api_key is None
+    ollama_cognee = RealCogneeEngine(store_dir=tmp_path / "cg", llm_provider="ollama")
+    assert ollama_cognee.llm_api_key == "ollama"
+
+    # Adapter preserves setup_code, explicit None expected output, and `assert ... is None`
+    ds_json = tmp_path / "with_setup.json"
+    ds_json.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "SETUP-1",
+                    "code": "def unwrap(b):\n    return b.v if b is not None else None\n",
+                    "test_cases": [
+                        {
+                            "test_id": "T1",
+                            "call_expr": "unwrap(Box(7))",
+                            "expected_output": 7,
+                            "setup_code": "class Box:\n    def __init__(self, v): self.v = v\n",
+                        },
+                        {
+                            "test_id": "T2",
+                            "call_expr": "unwrap(None)",
+                            "expected": None,
+                        },
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    loaded = PlugAndPlayDatasetAdapter.load_any_dataset(ds_json)
+    assert loaded[0].test_cases[0].setup_code.startswith("class Box:")
+    assert loaded[0].test_cases[1].expected_output is None
+
+    ds_is = tmp_path / "is_none.jsonl"
+    ds_is.write_text(
+        json.dumps(
+            {
+                "id": "IS-1",
+                "code": "def maybe_none(x):\n    return None if x == 0 else x\n",
+                "tests": ["assert maybe_none(0) is None", "assert maybe_none(3) == 3"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    loaded_is = PlugAndPlayDatasetAdapter.load_any_dataset(ds_is)
+    assert loaded_is[0].test_cases[0].expected_output is None
+
+    empty_yaml = tmp_path / "empty.yaml"
+    empty_yaml.write_text("", encoding="utf-8")
+    assert PlugAndPlayDatasetAdapter.load_any_dataset(empty_yaml) == []
+
+
+def test_orchestrator_zero_turns_and_custom_initial_elo(tmp_path: Path) -> None:
+    """Verify num_turns=0 runs only baseline exam without executing Turn 1, and honors initial_elo."""
+    llm = LocalLLMClient(mode="adaptive_local")
+    orchestrator = ARESLangGraphOrchestrator(
+        attacker=AttackerAgent(llm_client=llm),
+        defender=DefenderAgent(llm_client=llm),
+        referee=DeterministicReferee(),
+        memory=CogneeMemoryManager(store_dir=tmp_path / "zero_mem", backend="local_graph"),
+        output_dir=tmp_path / "zero_out",
+        initial_elo=1500.0,
+    )
+    summary = orchestrator.run_self_play(num_turns=0, exam_interval=5, run_baseline_exam=True)
+    assert summary["total_turns"] == 0
+    assert summary["attacker_final_elo"] == 1500.0
+    assert summary["defender_final_elo"] == 1500.0
+    assert len(summary["external_exams"]) == 1
+    assert summary["external_exams"][0]["after_turn"] == 0

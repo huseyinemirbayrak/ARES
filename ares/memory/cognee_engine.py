@@ -61,15 +61,14 @@ class RealCogneeEngine:
         if self.llm_provider == "ollama" and cleaned_endpoint.endswith("/v1"):
             cleaned_endpoint = cleaned_endpoint[:-3]
         self.llm_endpoint = cleaned_endpoint
-        self.llm_api_key = (
-            llm_api_key
-            if llm_api_key and llm_api_key != "ollama"
-            else (
-                os.environ.get("LLM_API_KEY")
-                or os.environ.get("OPENAI_API_KEY")
-                or "ollama"
-            )
-        )
+        if llm_api_key and llm_api_key != "ollama":
+            self.llm_api_key = llm_api_key
+        elif self.llm_provider == "ollama":
+            # Never leak host OPENAI_API_KEY into local Ollama configuration
+            self.llm_api_key = "ollama"
+        else:
+            env_key = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+            self.llm_api_key = env_key if env_key and env_key != "ollama" else "ollama"
         raw_embed_provider = embedding_provider.lower()
         self.embedding_provider = (
             "openai" if raw_embed_provider == "openai_compatible" else raw_embed_provider

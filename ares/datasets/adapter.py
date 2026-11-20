@@ -47,7 +47,7 @@ def _parse_assert_line(line: str, fn_name: str, idx: int) -> UnitTestCase | None
         stmt = tree.body[0]
         if isinstance(stmt, ast.Assert) and isinstance(stmt.test, ast.Compare):
             cmp = stmt.test
-            if len(cmp.ops) == 1 and isinstance(cmp.ops[0], ast.Eq):
+            if len(cmp.ops) == 1 and isinstance(cmp.ops[0], (ast.Eq, ast.Is)):
                 call_expr = ast.unparse(cmp.left)
                 expected_val = ast.literal_eval(cmp.comparators[0])
                 return UnitTestCase(
@@ -103,14 +103,20 @@ def _normalize_test_cases(
             continue
 
         if isinstance(item, dict):
+            setup_code = str(item.get("setup_code", ""))
             # Case C: Native ARES format (`call_expr` + `expected_output`)
             if "call_expr" in item:
+                has_explicit_expected = any(
+                    k in item for k in ("expected_output", "expected", "output")
+                )
                 expected = item.get(
                     "expected_output",
                     item.get("expected", item.get("output")),
                 )
-                if expected is None and "expected_output" not in item:
-                    expected = _run_single_test_in_ns(clean_code, item["call_expr"])
+                if not has_explicit_expected:
+                    expected = _run_single_test_in_ns(
+                        clean_code, item["call_expr"], setup_code=setup_code
+                    )
                 normalized.append(
                     UnitTestCase(
                         test_id=str(item.get("test_id", f"T{idx}")),
@@ -118,6 +124,7 @@ def _normalize_test_cases(
                         call_expr=str(item["call_expr"]),
                         expected_output=expected,
                         is_edge_case=bool(item.get("is_edge_case", idx >= 4)),
+                        setup_code=setup_code,
                     )
                 )
                 continue
@@ -135,12 +142,17 @@ def _normalize_test_cases(
             else:
                 call_expr = f"{fn_name}({args_repr})"
 
+            has_explicit_expected = any(
+                k in item for k in ("expected_output", "expected", "output")
+            )
             expected = item.get(
                 "expected_output",
                 item.get("expected", item.get("output")),
             )
-            if expected is None and "output" not in item and "expected" not in item:
-                expected = _run_single_test_in_ns(clean_code, call_expr)
+            if not has_explicit_expected:
+                expected = _run_single_test_in_ns(
+                    clean_code, call_expr, setup_code=setup_code
+                )
 
             normalized.append(
                 UnitTestCase(
@@ -149,6 +161,7 @@ def _normalize_test_cases(
                     call_expr=call_expr,
                     expected_output=expected,
                     is_edge_case=bool(item.get("is_edge_case", idx >= 4)),
+                    setup_code=setup_code,
                 )
             )
 
@@ -191,7 +204,7 @@ class PlugAndPlayDatasetAdapter:
 
     @classmethod
     def load_any_dataset(cls, path: str | Path) -> list[CodeProblem]:
-        raw_str = str(path).strip().lower()
+        raw_str = str(path).strip().rstrip("/\\").lower()
         from ares.datasets.external_suites import (
             load_agent_green_suite,
             load_all_external_suites,
@@ -221,22 +234,26 @@ class PlugAndPlayDatasetAdapter:
                     raw_items.append(json.loads(line))
         elif suffix in (".yaml", ".yml"):
             loaded = yaml.safe_load(file_path.read_text(encoding="utf-8"))
-            raw_items = (
-                loaded
-                if isinstance(loaded, list)
-                else loaded.get("problems", loaded.get("data", loaded.get("items", [])))
-            )
+            if loaded is None:
+                raw_items = []
+            elif isinstance(loaded, list):
+                raw_items = loaded
+            elif isinstance(loaded, dict):
+                raw_items = loaded.get("problems", loaded.get("data", loaded.get("items", [])))
+            else:
+                raise ValueError(f"Unsupported YAML root type in {file_path}: {type(loaded).__name__}")
         elif suffix == ".csv":
             with file_path.open("r", encoding="utf-8", newline="") as f:
                 reader = csv.DictReader(f)
                 raw_items = list(reader)
         else:  # Default JSON
             loaded = json.loads(file_path.read_text(encoding="utf-8"))
-            raw_items = (
-                loaded
-                if isinstance(loaded, list)
-                else loaded.get("problems", loaded.get("data", loaded.get("items", [])))
-            )
+            if isinstance(loaded, list):
+                raw_items = loaded
+            elif isinstance(loaded, dict):
+                raw_items = loaded.get("problems", loaded.get("data", loaded.get("items", [])))
+            else:
+                raise ValueError(f"Unsupported JSON root type in {file_path}: {type(loaded).__name__}")
 
         problems: list[CodeProblem] = []
         for idx, item in enumerate(raw_items, start=1):

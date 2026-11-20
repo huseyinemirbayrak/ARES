@@ -51,13 +51,15 @@ class ARESLangGraphOrchestrator:
         on_turn_complete: Callable[[TurnRecord], None] | None = None,
         on_exam_complete: Callable[[ExamResult], None] | None = None,
         thread_id: str | None = None,
+        initial_elo: float = 1200.0,
     ) -> None:
-        self.problems = problems or load_problems(exam=False)
-        self.exam_problems = exam_problems or load_problems(exam=True)
+        self.problems = problems if problems is not None else load_problems(exam=False)
+        self.exam_problems = exam_problems if exam_problems is not None else load_problems(exam=True)
         self.attacker = attacker or AttackerAgent()
         self.defender = defender or DefenderAgent()
         self.referee = referee or DeterministicReferee()
         self.memory = memory or CogneeMemoryManager()
+        self.initial_elo = float(initial_elo)
         self.exam_evaluator = ExternalExamEvaluator(
             exam_problems=self.exam_problems, referee=self.referee
         )
@@ -176,8 +178,8 @@ class ARESLangGraphOrchestrator:
             attacker_suite=att_suite,
         )
         new_att_elo, new_def_elo = self.referee.update_elo(
-            state.get("attacker_elo", 1200.0),
-            state.get("defender_elo", 1200.0),
+            state.get("attacker_elo", self.initial_elo),
+            state.get("defender_elo", self.initial_elo),
             verdict.winner,
         )
 
@@ -265,8 +267,8 @@ class ARESLangGraphOrchestrator:
             attacker=self.attacker,
             defender=self.defender,
             memory=self.memory,
-            attacker_elo=state.get("attacker_elo", 1200.0),
-            defender_elo=state.get("defender_elo", 1200.0),
+            attacker_elo=state.get("attacker_elo", self.initial_elo),
+            defender_elo=state.get("defender_elo", self.initial_elo),
         )
         if self.on_exam_complete:
             self.on_exam_complete(exam_res)
@@ -303,6 +305,11 @@ class ARESLangGraphOrchestrator:
         run_baseline_exam: bool = True,
     ) -> dict[str, Any]:
         """Execute the full LangGraph self-play loop and persist logs, exams, and scoreboard."""
+        if num_turns < 0:
+            raise ValueError(f"num_turns must be >= 0, got {num_turns}")
+        if num_turns > 0 and not self.problems:
+            raise ValueError("Cannot run self-play with an empty arena problem list.")
+
         self._turn_records = []
         self._exam_records = []
 
@@ -312,8 +319,8 @@ class ARESLangGraphOrchestrator:
                 attacker=self.attacker,
                 defender=self.defender,
                 memory=self.memory,
-                attacker_elo=1200.0,
-                defender_elo=1200.0,
+                attacker_elo=self.initial_elo,
+                defender_elo=self.initial_elo,
             )
             if self.on_exam_complete:
                 self.on_exam_complete(baseline_exam)
@@ -323,21 +330,24 @@ class ARESLangGraphOrchestrator:
             "turn_id": 0,
             "max_turns": num_turns,
             "exam_interval": exam_interval,
-            "attacker_elo": 1200.0,
-            "defender_elo": 1200.0,
+            "attacker_elo": self.initial_elo,
+            "defender_elo": self.initial_elo,
             "attacker_wins": 0,
             "defender_wins": 0,
             "draws": 0,
         }
 
-        recursion_limit = max(500, num_turns * 14)
-        final_state = self.graph.invoke(
-            initial_state,
-            config={
-                "configurable": {"thread_id": self.thread_id},
-                "recursion_limit": recursion_limit,
-            },
-        )
+        if num_turns > 0:
+            recursion_limit = max(500, num_turns * 14)
+            final_state = self.graph.invoke(
+                initial_state,
+                config={
+                    "configurable": {"thread_id": self.thread_id},
+                    "recursion_limit": recursion_limit,
+                },
+            )
+        else:
+            final_state = initial_state
         self.memory.flush_cognee()
 
         summary = self._persist_outputs(final_state)
@@ -424,8 +434,8 @@ class ARESLangGraphOrchestrator:
             "attacker_wins": final_state.get("attacker_wins", 0),
             "defender_wins": final_state.get("defender_wins", 0),
             "draws": final_state.get("draws", 0),
-            "attacker_final_elo": final_state.get("attacker_elo", 1200.0),
-            "defender_final_elo": final_state.get("defender_elo", 1200.0),
+            "attacker_final_elo": final_state.get("attacker_elo", self.initial_elo),
+            "defender_final_elo": final_state.get("defender_elo", self.initial_elo),
             "langgraph_orchestrator": {
                 "framework": "langgraph.StateGraph",
                 "checkpointer": "MemorySaver",
