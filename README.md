@@ -7,7 +7,7 @@
 ## Temel Mimari (Core Architecture)
 
 1. **5 Bölümlü Yapılandırılmış Prompt Sistemi (`StructuredPromptConfig`)**:
-   - Attacker ve Defender ajanları YAML üzerinden parametre kontrollü 5 bölümlü promptlarla (`Task`, `Recipe`, `Output`, `Validation`, `Examples`) yönetilir ([attacker_prompt.yaml](file:///c:/Users/LENOVO/.gemini/antigravity/scratch/ARES/configs/attacker_prompt.yaml), [defender_prompt.yaml](file:///c:/Users/LENOVO/.gemini/antigravity/scratch/ARES/configs/defender_prompt.yaml)).
+   - Attacker ve Defender ajanları YAML üzerinden parametre kontrollü 5 bölümlü promptlarla (`Task`, `Recipe`, `Output`, `Validation`, `Examples`) yönetilir ([attacker_prompt.yaml](configs/prompts/attacker_prompt.yaml), [defender_prompt.yaml](configs/prompts/defender_prompt.yaml)).
    - `--blind-attacker` / `--blind-defender` bayraklarıyla testlerin görünürlüğü kapatılıp açılabilir; `--strict-llm` ile saf LLM performansı ölçülür.
 
 2. **Gerçek LangGraph Orkestratörü (`ARESLangGraphOrchestrator`)**:

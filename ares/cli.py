@@ -248,7 +248,7 @@ def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--strict-llm",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=bool(sp_cfg.get("strict_llm", False)),
         help="Disable heuristic AST fallbacks so every turn measures pure Local LLM performance",
     )
