@@ -315,6 +315,8 @@ class ExamResult(BaseModel):
     defender_full_repair_rate: float
     defender_classification_accuracy: float
     defender_combined_score: float
+    defender_bug_detection_rate: float = 0.0
+    defender_avg_test_pass_rate: float = 0.0
     attacker_elo: float
     defender_elo: float
     cognee_knowledge_nodes: int

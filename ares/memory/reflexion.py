@@ -227,13 +227,23 @@ def build_turn_reflexion(
             test_scope_note = f"{def_failed}/{total} hidden tests still failed"
         else:
             test_scope_note = f"{def_failed}/{total} tests still failed ({verdict.defender_suite_result.failed_test_ids})"
+        if verdict.ground_truth_defect == "clean":
+            diag_lesson = (
+                f"Diagnosis lesson: On functions with [{feat_str}], the input code was actually CLEAN "
+                f"(all unit tests already satisfied). Avoid altering clean code when static tracing confirms "
+                f"every test case passes."
+            )
+        else:
+            diag_lesson = (
+                f"Diagnosis lesson: On functions with [{feat_str}], inspect for '{verdict.ground_truth_defect}' "
+                f"— check edge initializers, loop bounds, boundary operators (`<` vs `<=`), and empty/singleton guards "
+                f"against the function specification rather than leaving the code unchanged."
+            )
         def_lesson = (
             f"[FAILED REPAIR REFLEXION | AST: {feat_str} | Actual Defect: {verdict.ground_truth_defect}] "
             f"Your patch did NOT resolve the bug ({test_scope_note}).\n"
             f"Your insufficient diff:\n{repair_diff}\n"
-            f"Diagnosis lesson: On functions with [{feat_str}], inspect for '{verdict.ground_truth_defect}' "
-            f"— check edge initializers, loop bounds, boundary operators (`<` vs `<=`), and empty/singleton guards "
-            f"against the function specification rather than leaving the code unchanged."
+            f"{diag_lesson}"
         )
 
     return TurnReflexion(

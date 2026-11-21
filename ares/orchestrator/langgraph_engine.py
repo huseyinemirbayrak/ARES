@@ -19,7 +19,11 @@ from langgraph.graph import END, START, StateGraph
 from ares.agents.attacker import AttackerAgent
 from ares.agents.defender import DefenderAgent
 from ares.datasets.loader import load_problems
-from ares.evaluation.exam_evaluator import ExternalExamEvaluator
+from ares.evaluation.exam_evaluator import (
+    ExternalExamEvaluator,
+    build_pre_post_comparison,
+    render_pre_post_markdown,
+)
 from ares.memory.cognee_memory import CogneeMemoryManager
 from ares.memory.reflexion import build_turn_reflexion
 from ares.models import (
@@ -389,6 +393,8 @@ class ARESLangGraphOrchestrator:
         defender_llm_turns = sum(1 for t in turns if t["defender_output"].get("used_llm"))
 
         exam_improvement: dict[str, Any] = {}
+        pre_post_comparison: dict[str, Any] = {}
+        pre_post_report_paths: dict[str, str] = {}
         if len(exams) >= 2:
             first_ex = exams[0]
             last_ex = exams[-1]
@@ -405,6 +411,16 @@ class ARESLangGraphOrchestrator:
                     - first_ex["defender_full_repair_rate"],
                     2,
                 ),
+                "defender_bug_detection_rate_delta": round(
+                    last_ex.get("defender_bug_detection_rate", 0.0)
+                    - first_ex.get("defender_bug_detection_rate", 0.0),
+                    2,
+                ),
+                "defender_avg_test_pass_rate_delta": round(
+                    last_ex.get("defender_avg_test_pass_rate", 0.0)
+                    - first_ex.get("defender_avg_test_pass_rate", 0.0),
+                    2,
+                ),
                 "defender_classification_accuracy_delta": round(
                     last_ex["defender_classification_accuracy"]
                     - first_ex["defender_classification_accuracy"],
@@ -419,6 +435,21 @@ class ARESLangGraphOrchestrator:
                     last_ex["cognee_knowledge_nodes"]
                     - first_ex["cognee_knowledge_nodes"]
                 ),
+            }
+            pre_post_comparison = build_pre_post_comparison(first_ex, last_ex)
+            pre_post_json_path = self.output_dir / "pre_post_comparison.json"
+            pre_post_md_path = self.output_dir / "pre_post_comparison.md"
+            pre_post_json_path.write_text(
+                json.dumps(pre_post_comparison, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            pre_post_md_path.write_text(
+                render_pre_post_markdown(pre_post_comparison),
+                encoding="utf-8",
+            )
+            pre_post_report_paths = {
+                "json": str(pre_post_json_path),
+                "markdown": str(pre_post_md_path),
             }
 
         memory_meta = {
@@ -479,6 +510,8 @@ class ARESLangGraphOrchestrator:
             "memory_system": memory_meta,
             "cognee_portable_memory": memory_meta,
             "external_exam_improvement": exam_improvement,
+            "pre_post_comparison": pre_post_comparison,
+            "pre_post_report_paths": pre_post_report_paths,
             "external_exams": exams,
         }
 

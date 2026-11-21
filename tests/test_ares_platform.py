@@ -1258,3 +1258,187 @@ def test_phase2_referee_1_to_2_rule_verify_bug_mutation_and_leak_free_reflexion(
     assert "1/5" not in refl.defender_lesson
     assert problem.clean_code.strip() not in refl.defender_lesson
     assert "did not satisfy all unit tests" in refl.defender_lesson
+
+
+def test_phase3_exam_detection_metrics_and_pre_post_comparison_report(tmp_path: Path) -> None:
+    """Phase 3: Verify bug detection / avg pass rate metrics, transitions (GAINED/REGRESSED), and Pre/Post files."""
+    import json
+    from ares.evaluation.exam_evaluator import (
+        ExternalExamEvaluator,
+        build_pre_post_comparison,
+        render_pre_post_markdown,
+    )
+
+    # 1. Unit-test build_pre_post_comparison across all 4 transition buckets
+    baseline = {
+        "exam_id": "EXAM_TURN_000",
+        "after_turn": 0,
+        "num_exam_problems": 4,
+        "attacker_valid_subtle_rate": 50.0,
+        "defender_full_repair_rate": 50.0,
+        "defender_bug_detection_rate": 50.0,
+        "defender_avg_test_pass_rate": 70.0,
+        "defender_classification_accuracy": 50.0,
+        "defender_combined_score": 50.0,
+        "cognee_knowledge_nodes": 0,
+        "per_problem_details": [
+            {
+                "problem_id": "EXAM-TD-101",
+                "title": "P1",
+                "function_name": "f1",
+                "ground_truth_defect": "negative_or_zero_edge_debt",
+                "defender_repaired_all_5_tests": False,
+                "defender_bug_detected_correctly": False,
+                "defender_classification_correct": False,
+                "defender_passed_tests": "4/5",
+                "defender_predicted_defect": "clean",
+            },
+            {
+                "problem_id": "EXAM-TD-102",
+                "title": "P2",
+                "function_name": "f2",
+                "ground_truth_defect": "off_by_one_boundary",
+                "defender_repaired_all_5_tests": True,
+                "defender_bug_detected_correctly": True,
+                "defender_classification_correct": True,
+                "defender_passed_tests": "5/5",
+                "defender_predicted_defect": "off_by_one_boundary",
+            },
+            {
+                "problem_id": "EXAM-TD-103",
+                "title": "P3",
+                "function_name": "f3",
+                "ground_truth_defect": "tie_breaker_or_duplicate_debt",
+                "defender_repaired_all_5_tests": True,
+                "defender_bug_detected_correctly": True,
+                "defender_classification_correct": True,
+                "defender_passed_tests": "5/5",
+                "defender_predicted_defect": "tie_breaker_or_duplicate_debt",
+            },
+            {
+                "problem_id": "EXAM-TD-104",
+                "title": "P4",
+                "function_name": "f4",
+                "ground_truth_defect": "empty_or_singleton_debt",
+                "defender_repaired_all_5_tests": False,
+                "defender_bug_detected_correctly": False,
+                "defender_classification_correct": False,
+                "defender_passed_tests": "4/5",
+                "defender_predicted_defect": "clean",
+            },
+        ],
+    }
+    final = {
+        "exam_id": "EXAM_TURN_010",
+        "after_turn": 10,
+        "num_exam_problems": 4,
+        "attacker_valid_subtle_rate": 75.0,
+        "defender_full_repair_rate": 50.0,
+        "defender_bug_detection_rate": 75.0,
+        "defender_avg_test_pass_rate": 85.0,
+        "defender_classification_accuracy": 75.0,
+        "defender_combined_score": 62.5,
+        "cognee_knowledge_nodes": 22,
+        "per_problem_details": [
+            {
+                "problem_id": "EXAM-TD-101",
+                "title": "P1",
+                "function_name": "f1",
+                "ground_truth_defect": "negative_or_zero_edge_debt",
+                "defender_repaired_all_5_tests": True,
+                "defender_bug_detected_correctly": True,
+                "defender_classification_correct": True,
+                "defender_passed_tests": "5/5",
+                "defender_predicted_defect": "negative_or_zero_edge_debt",
+            },
+            {
+                "problem_id": "EXAM-TD-102",
+                "title": "P2",
+                "function_name": "f2",
+                "ground_truth_defect": "off_by_one_boundary",
+                "defender_repaired_all_5_tests": False,
+                "defender_bug_detected_correctly": True,
+                "defender_classification_correct": True,
+                "defender_passed_tests": "4/5",
+                "defender_predicted_defect": "off_by_one_boundary",
+            },
+            {
+                "problem_id": "EXAM-TD-103",
+                "title": "P3",
+                "function_name": "f3",
+                "ground_truth_defect": "tie_breaker_or_duplicate_debt",
+                "defender_repaired_all_5_tests": True,
+                "defender_bug_detected_correctly": True,
+                "defender_classification_correct": True,
+                "defender_passed_tests": "5/5",
+                "defender_predicted_defect": "tie_breaker_or_duplicate_debt",
+            },
+            {
+                "problem_id": "EXAM-TD-104",
+                "title": "P4",
+                "function_name": "f4",
+                "ground_truth_defect": "empty_or_singleton_debt",
+                "defender_repaired_all_5_tests": False,
+                "defender_bug_detected_correctly": False,
+                "defender_classification_correct": False,
+                "defender_passed_tests": "4/5",
+                "defender_predicted_defect": "clean",
+            },
+        ],
+    }
+
+    cmp = build_pre_post_comparison(baseline, final)
+    assert cmp["repair_transitions"]["gained"] == ["EXAM-TD-101"]
+    assert cmp["repair_transitions"]["regressed"] == ["EXAM-TD-102"]
+    assert cmp["repair_transitions"]["always_solved"] == ["EXAM-TD-103"]
+    assert cmp["repair_transitions"]["still_unsolved"] == ["EXAM-TD-104"]
+    assert cmp["detection_transitions"]["gained"] == ["EXAM-TD-101"]
+    assert cmp["metrics"]["defender_bug_detection_rate"]["delta"] == 25.0
+    assert cmp["metrics"]["defender_avg_test_pass_rate"]["delta"] == 15.0
+    assert cmp["metrics"]["memory_knowledge_nodes"]["delta"] == 22
+
+    md = render_pre_post_markdown(cmp)
+    assert "Turn 0 -> Turn 10" in md
+    assert "**GAINED**" in md and "**REGRESSED**" in md
+    assert "`EXAM-TD-101`" in md
+
+    # 2. End-to-end orchestrator run writes pre_post_comparison.json & .md with hide_test_results=True
+    llm = LocalLLMClient(mode="adaptive_local")
+    exam_problems = load_problems(exam=True)[:2]
+    arena_problems = load_problems(exam=False)[:2]
+    out_dir = tmp_path / "p3_out"
+    orch = ARESLangGraphOrchestrator(
+        problems=arena_problems,
+        exam_problems=exam_problems,
+        attacker=AttackerAgent(llm_client=llm, hide_test_results=True),
+        defender=DefenderAgent(llm_client=llm, hide_test_results=True),
+        referee=DeterministicReferee(min_broken_tests=1, max_broken_tests=2),
+        memory=CogneeMemoryManager(store_dir=tmp_path / "p3_mem", backend="local_graph"),
+        output_dir=out_dir,
+    )
+    sb = orch.run_self_play(num_turns=2, exam_interval=2, run_baseline_exam=True)
+    assert (out_dir / "pre_post_comparison.json").exists()
+    assert (out_dir / "pre_post_comparison.md").exists()
+    loaded_cmp = json.loads((out_dir / "pre_post_comparison.json").read_text(encoding="utf-8"))
+    assert loaded_cmp["baseline_turn"] == 0
+    assert loaded_cmp["final_turn"] == 2
+    assert loaded_cmp["num_exam_problems"] == 2
+    assert sb["external_exams"][0]["defender_bug_detection_rate"] >= 0.0
+    assert sb["external_exams"][0]["defender_avg_test_pass_rate"] >= 0.0
+    assert all(
+        row["hide_test_results"] is True
+        for row in sb["external_exams"][0]["per_problem_details"]
+    )
+
+    # 3. Direct ExternalExamEvaluator check verifies detection & pass rate metrics on real exam suite
+    ev = ExternalExamEvaluator(exam_problems=exam_problems, referee=DeterministicReferee())
+    ex_res = ev.run_exam(
+        after_turn=0,
+        attacker=AttackerAgent(llm_client=llm, hide_test_results=True),
+        defender=DefenderAgent(llm_client=llm, hide_test_results=True),
+        memory=CogneeMemoryManager(store_dir=tmp_path / "p3_ev_mem", backend="local_graph"),
+        attacker_elo=1200.0,
+        defender_elo=1200.0,
+    )
+    assert 0.0 <= ex_res.defender_bug_detection_rate <= 100.0
+    assert 0.0 <= ex_res.defender_avg_test_pass_rate <= 100.0

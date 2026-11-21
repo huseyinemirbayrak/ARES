@@ -714,9 +714,11 @@ def main(argv: list[str] | None = None) -> int:
         exam_table.add_column("After Turn", justify="right")
         exam_table.add_column("Memory KG Nodes", justify="right")
         exam_table.add_column("Attacker Valid 1-2 Broken (%)", justify="right")
+        exam_table.add_column("Defender Bug Detection (%)", justify="right")
         exam_table.add_column("Defender Full Repair (%)", justify="right")
+        exam_table.add_column("Defender Avg Test Pass (%)", justify="right")
         exam_table.add_column("Defender Classification (%)", justify="right")
-        exam_table.add_column("Defender Combined Score (%)", justify="right")
+        exam_table.add_column("Defender Combined (%)", justify="right")
 
         for ex in exam_records:
             exam_table.add_row(
@@ -724,22 +726,69 @@ def main(argv: list[str] | None = None) -> int:
                 str(ex.after_turn),
                 str(ex.cognee_knowledge_nodes),
                 f"{ex.attacker_valid_subtle_rate:.1f}%",
+                f"{ex.defender_bug_detection_rate:.1f}%",
                 f"{ex.defender_full_repair_rate:.1f}%",
+                f"{ex.defender_avg_test_pass_rate:.1f}%",
                 f"{ex.defender_classification_accuracy:.1f}%",
                 f"{ex.defender_combined_score:.1f}%",
             )
         console.print(exam_table)
 
+        pre_post = scoreboard.get("pre_post_comparison", {})
+        if pre_post:
+            b_t = pre_post["baseline_turn"]
+            f_t = pre_post["final_turn"]
+            cmp_table = Table(
+                title=f"Pre vs. Post Problem-Level Comparison (Turn {b_t} -> Turn {f_t})",
+                header_style="bold cyan",
+            )
+            cmp_table.add_column("Problem ID", style="bold")
+            cmp_table.add_column("Defect")
+            cmp_table.add_column(f"Tests (T{b_t}->T{f_t})", justify="center")
+            cmp_table.add_column("Detected", justify="center")
+            cmp_table.add_column("Classified", justify="center")
+            cmp_table.add_column("Repair Status", justify="center")
+
+            status_styles = {
+                "GAINED": "[bold bright_green]GAINED[/bold bright_green]",
+                "REGRESSED": "[bold red]REGRESSED[/bold red]",
+                "ALWAYS_SOLVED": "[green]ALWAYS_SOLVED[/green]",
+                "STILL_UNSOLVED": "[yellow]STILL_UNSOLVED[/yellow]",
+            }
+            for row in pre_post.get("per_problem_comparison", []):
+                det_str = f"{'Y' if row['before_detected'] else 'N'}->{'Y' if row['after_detected'] else 'N'}"
+                cls_str = f"{'Y' if row['before_classified'] else 'N'}->{'Y' if row['after_classified'] else 'N'}"
+                cmp_table.add_row(
+                    row["problem_id"],
+                    row["ground_truth_defect"],
+                    f"{row['before_passed_tests']}->{row['after_passed_tests']}",
+                    det_str,
+                    cls_str,
+                    status_styles.get(row["repair_status"], row["repair_status"]),
+                )
+            console.print(cmp_table)
+
         imp = scoreboard.get("external_exam_improvement", {})
+        report_paths = scoreboard.get("pre_post_report_paths", {})
         mem_sys = scoreboard.get("memory_system", scoreboard["cognee_portable_memory"])
         llm_m = scoreboard.get("llm_usage_metrics", {})
         if imp:
+            rt = pre_post.get("repair_transitions", {})
+            report_line = (
+                f"\n  - Pre/Post Report Saved: `{report_paths['markdown']}`"
+                if report_paths.get("markdown")
+                else ""
+            )
             delta_block = (
                 f"• External Exam Delta (Turn {imp['baseline_turn']} -> Turn {imp['final_turn']}):\n"
                 f"  - Attacker Valid Subtle Attack Rate Delta: [bold cyan]{imp.get('attacker_valid_subtle_rate_delta', 0.0):+.2f}%[/bold cyan]\n"
+                f"  - Defender Bug Detection Rate Delta:       [bold green]{imp.get('defender_bug_detection_rate_delta', 0.0):+.2f}%[/bold green]\n"
                 f"  - Defender Full Repair Rate Delta:         [bold green]{imp.get('defender_full_repair_rate_delta', 0.0):+.2f}%[/bold green]\n"
+                f"  - Defender Avg Test Pass Rate Delta:       [bold green]{imp.get('defender_avg_test_pass_rate_delta', 0.0):+.2f}%[/bold green]\n"
                 f"  - Defender Classification Accuracy Delta:  [bold green]{imp.get('defender_classification_accuracy_delta', 0.0):+.2f}%[/bold green]\n"
-                f"  - Defender Combined Score Delta:           [bold gold1]{imp.get('defender_combined_score_delta', 0.0):+.2f}%[/bold gold1]"
+                f"  - Defender Combined Score Delta:           [bold gold1]{imp.get('defender_combined_score_delta', 0.0):+.2f}%[/bold gold1]\n"
+                f"  - Repair Transitions: Gained={len(rt.get('gained', []))}, Regressed={len(rt.get('regressed', []))}, "
+                f"Always Solved={len(rt.get('always_solved', []))}, Still Unsolved={len(rt.get('still_unsolved', []))}{report_line}"
             )
         else:
             delta_block = (
