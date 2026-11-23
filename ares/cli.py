@@ -22,6 +22,7 @@ from ares.agents.attacker import AttackerAgent
 from ares.agents.defender import DefenderAgent
 from ares.agents.llm_client import LocalLLMClient, infer_llm_provider
 from ares.datasets.adapter import PlugAndPlayDatasetAdapter
+from ares.datasets.bug_collector import GeneratedBugDatasetStore
 from ares.datasets.loader import load_problems
 from ares.memory.cognee_memory import CogneeMemoryManager
 from ares.models import ExamResult, TurnRecord
@@ -86,6 +87,7 @@ def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
     llm_cfg = cfg.get("llm", {})
     att_llm_cfg = llm_cfg.get("attacker_model", {})
     def_llm_cfg = llm_cfg.get("defender_model", {})
+    ds_cfg = cfg.get("datasets", {})
     log_cfg = cfg.get("logging", {})
 
     parser = argparse.ArgumentParser(
@@ -300,6 +302,24 @@ def build_parser(cfg: dict[str, Any] | None = None) -> argparse.ArgumentParser:
         type=str,
         default=str(log_cfg.get("output_dir", "outputs")),
         help="Directory for turn logs, exam results, and scoreboard summary",
+    )
+    parser.add_argument(
+        "--generated-dataset-dir",
+        type=str,
+        default=str(ds_cfg.get("generated_dataset_dir", "generated_datasets")),
+        help="Separate directory where Referee-verified Attacker-generated bugs (1-2 tests broken) are saved",
+    )
+    parser.add_argument(
+        "--save-generated-bugs",
+        action=argparse.BooleanOptionalAction,
+        default=bool(ds_cfg.get("save_generated_bugs", True)),
+        help="Persist all Referee-verified 1-2 test-breaking bugs into --generated-dataset-dir (default: enabled)",
+    )
+    parser.add_argument(
+        "--append-to-exam-benchmark",
+        action="store_true",
+        default=False,
+        help="After Turn N final exam finishes, also merge newly verified bugs into the target exam benchmark JSON (never contaminates Pre/Post metrics)",
     )
     return parser
 
@@ -677,6 +697,12 @@ def main(argv: list[str] | None = None) -> int:
         def handle_exam(ex: ExamResult) -> None:
             exam_records.append(ex)
 
+        bug_collector = (
+            GeneratedBugDatasetStore(output_dir=args.generated_dataset_dir)
+            if args.save_generated_bugs
+            else None
+        )
+
         orchestrator = ARESLangGraphOrchestrator(
             problems=problems,
             exam_problems=exam_problems,
@@ -688,6 +714,7 @@ def main(argv: list[str] | None = None) -> int:
             on_turn_complete=handle_turn,
             on_exam_complete=handle_exam,
             initial_elo=float(sp_cfg.get("elo_initial_rating", 1200.0)),
+            bug_collector=bug_collector,
         )
 
         scoreboard = orchestrator.run_self_play(
@@ -695,6 +722,29 @@ def main(argv: list[str] | None = None) -> int:
             exam_interval=args.exam_interval,
             run_baseline_exam=bool(sp_cfg.get("run_baseline_exam", True)),
         )
+
+        if args.append_to_exam_benchmark:
+            if bug_collector is None:
+                console.print(
+                    "[bold yellow]WARNING:[/bold yellow] Skipping `--append-to-exam-benchmark` because "
+                    "`--no-save-generated-bugs` disabled generated bug collection."
+                )
+            else:
+                target_exam_path = resolved_exam_dataset or str(
+                    _REPO_ROOT / "ares" / "datasets" / "external_exam_benchmark.json"
+                )
+                if Path(target_exam_path).suffix.lower() == ".json" and Path(target_exam_path).exists():
+                    sync_res = bug_collector.append_to_exam_benchmark(target_exam_path)
+                    console.print(
+                        f"[bold green]Post-run sync into exam benchmark `{target_exam_path}`:[/bold green] "
+                        f"+{sync_res['new_problems_added']} problems, +{sync_res['new_mutations_added']} verified mutations "
+                        f"(skipped {sync_res['skipped_existing']} duplicates)."
+                    )
+                else:
+                    console.print(
+                        f"[bold yellow]WARNING:[/bold yellow] Skipping `--append-to-exam-benchmark` because "
+                        f"`{target_exam_path}` is not a writable .json benchmark file."
+                    )
 
         if args.export_memory:
             exported_path = memory.export_portable_bundle(
@@ -794,6 +844,18 @@ def main(argv: list[str] | None = None) -> int:
             delta_block = (
                 "• External Exam Delta: [dim]N/A (fewer than 2 exams completed in this run)[/dim]"
             )
+        gen_ds = scoreboard.get("generated_bug_dataset", {})
+        if gen_ds:
+            gen_block = (
+                f"\n• Generated Bug Dataset (Verified 1-2 Broken Only): "
+                f"[bold cyan]{gen_ds['total_saved_bugs']} total bugs[/bold cyan] "
+                f"(+{gen_ds['saved_this_run']} this run | evaded={gen_ds['evaded_defender_count']}, "
+                f"caught={gen_ds['caught_by_defender_count']}, rejected={gen_ds['rejected_this_run']}, "
+                f"dups={gen_ds['duplicates_skipped_this_run']})\n"
+                f"  Benchmark JSON: `{gen_ds['files']['exam_benchmark_json']}`"
+            )
+        else:
+            gen_block = ""
         console.print(
             Panel.fit(
                 f"[bold green]Self-Play & External Exam Summary[/bold green]\n"
@@ -810,7 +872,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"[bold]{mem_sys['total_edges']} edges[/bold], "
                 f"[bold]{mem_sys['total_episodes']} episodes[/bold]\n"
                 f"  Bundle saved at: `{mem_sys['bundle_path']}`\n"
-                f"{delta_block}",
+                f"{delta_block}{gen_block}",
                 border_style="green",
             )
         )

@@ -70,6 +70,8 @@ llm:
 datasets:
   self_play_dataset_path: "ares/datasets/mlcq_technical_debt_suite.json"
   external_exam_dataset_path: "ares/datasets/external_exam_benchmark.json"
+  generated_dataset_dir: "generated_datasets"
+  save_generated_bugs: true
 
 logging:
   output_dir: "outputs"

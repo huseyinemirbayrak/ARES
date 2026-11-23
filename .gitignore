@@ -10,6 +10,7 @@ venv/
 
 outputs/
 memory_store/
+generated_datasets/
 .cognee_system/
 .data_storage/
 

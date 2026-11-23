@@ -359,6 +359,9 @@ def render_pre_post_markdown(comparison: dict[str, Any]) -> str:
         ]
     )
 
+    def _esc(val: Any) -> str:
+        return str(val).replace("|", "\\|").replace("\n", " ")
+
     for row in comparison["per_problem_comparison"]:
         b_rep = "PASS" if row["before_repaired"] else "FAIL"
         a_rep = "PASS" if row["after_repaired"] else "FAIL"
@@ -366,9 +369,10 @@ def render_pre_post_markdown(comparison: dict[str, Any]) -> str:
         a_det = "YES" if row["after_detected"] else "NO"
         b_cls = "YES" if row["before_classified"] else "NO"
         a_cls = "YES" if row["after_classified"] else "NO"
+        label = _esc(row["function_name"] or row["title"])
         lines.append(
-            f"| `{row['problem_id']}` ({row['function_name'] or row['title']}) "
-            f"| `{row['ground_truth_defect']}` "
+            f"| `{_esc(row['problem_id'])}` ({label}) "
+            f"| `{_esc(row['ground_truth_defect'])}` "
             f"| {row['before_passed_tests']} -> {row['after_passed_tests']} "
             f"| {b_rep} -> {a_rep} "
             f"| {b_det} -> {a_det} "

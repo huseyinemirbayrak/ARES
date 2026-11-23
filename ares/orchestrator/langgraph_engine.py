@@ -9,6 +9,7 @@ Uses genuine `langgraph.graph.StateGraph` + `MemorySaver` checkpointing to coord
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable
 import uuid
@@ -18,6 +19,7 @@ from langgraph.graph import END, START, StateGraph
 
 from ares.agents.attacker import AttackerAgent
 from ares.agents.defender import DefenderAgent
+from ares.datasets.bug_collector import GeneratedBugDatasetStore
 from ares.datasets.loader import load_problems
 from ares.evaluation.exam_evaluator import (
     ExternalExamEvaluator,
@@ -56,6 +58,7 @@ class ARESLangGraphOrchestrator:
         on_exam_complete: Callable[[ExamResult], None] | None = None,
         thread_id: str | None = None,
         initial_elo: float = 1200.0,
+        bug_collector: GeneratedBugDatasetStore | None = None,
     ) -> None:
         self.problems = problems if problems is not None else load_problems(exam=False)
         self.exam_problems = exam_problems if exam_problems is not None else load_problems(exam=True)
@@ -64,6 +67,7 @@ class ARESLangGraphOrchestrator:
         self.referee = referee or DeterministicReferee()
         self.memory = memory or CogneeMemoryManager()
         self.initial_elo = float(initial_elo)
+        self.bug_collector = bug_collector
         self.exam_evaluator = ExternalExamEvaluator(
             exam_problems=self.exam_problems, referee=self.referee
         )
@@ -246,6 +250,19 @@ class ARESLangGraphOrchestrator:
             blind_defender=self.defender.blind_mode,
             hide_test_results=hide_results,
         )
+
+        if self.bug_collector is not None:
+            self.bug_collector.record_turn_bug(
+                run_id=self.thread_id,
+                turn_id=turn_id,
+                problem=problem,
+                attacker_output=att_output,
+                defender_output=def_output,
+                verdict=verdict,
+                referee=self.referee,
+                attacker_model=self.attacker.llm_client.model_name,
+                defender_model=self.defender.llm_client.model_name,
+            )
 
         record = TurnRecord(
             turn_id=turn_id,
@@ -439,18 +456,32 @@ class ARESLangGraphOrchestrator:
             pre_post_comparison = build_pre_post_comparison(first_ex, last_ex)
             pre_post_json_path = self.output_dir / "pre_post_comparison.json"
             pre_post_md_path = self.output_dir / "pre_post_comparison.md"
-            pre_post_json_path.write_text(
+            tmp_json = pre_post_json_path.with_suffix(".json.tmp")
+            tmp_json.write_text(
                 json.dumps(pre_post_comparison, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            pre_post_md_path.write_text(
+            os.replace(tmp_json, pre_post_json_path)
+            tmp_md = pre_post_md_path.with_suffix(".md.tmp")
+            tmp_md.write_text(
                 render_pre_post_markdown(pre_post_comparison),
                 encoding="utf-8",
             )
+            os.replace(tmp_md, pre_post_md_path)
             pre_post_report_paths = {
                 "json": str(pre_post_json_path),
                 "markdown": str(pre_post_md_path),
             }
+        else:
+            # Remove stale pre/post files from earlier multi-exam runs in the same output_dir
+            for stale_name in ("pre_post_comparison.json", "pre_post_comparison.md"):
+                stale_path = self.output_dir / stale_name
+                if stale_path.exists():
+                    stale_path.unlink()
+
+        generated_bug_summary = (
+            self.bug_collector.flush() if self.bug_collector is not None else {}
+        )
 
         memory_meta = {
             "active_backend": self.memory.active_backend,
@@ -512,6 +543,7 @@ class ARESLangGraphOrchestrator:
             "external_exam_improvement": exam_improvement,
             "pre_post_comparison": pre_post_comparison,
             "pre_post_report_paths": pre_post_report_paths,
+            "generated_bug_dataset": generated_bug_summary,
             "external_exams": exams,
         }
 

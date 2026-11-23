@@ -1,6 +1,7 @@
 """Datasets package for ARES."""
 
 from ares.datasets.adapter import PlugAndPlayDatasetAdapter
+from ares.datasets.bug_collector import GeneratedBugDatasetStore
 from ares.datasets.external_suites import (
     load_agent_green_suite,
     load_all_external_suites,
@@ -15,6 +16,7 @@ from ares.datasets.loader import (
 
 __all__ = [
     "PlugAndPlayDatasetAdapter",
+    "GeneratedBugDatasetStore",
     "load_problems",
     "load_quixbugs_suite",
     "load_agent_green_suite",

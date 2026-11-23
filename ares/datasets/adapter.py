@@ -335,9 +335,7 @@ class PlugAndPlayDatasetAdapter:
             subtle_count = sum(
                 1
                 for m in prob.candidate_mutations
-                if 1
-                <= referee.execute_test_suite(m.mutated_code, prob.test_cases).failed_count
-                <= 2
+                if referee.verify_bug_mutation(prob.clean_code, m.mutated_code, prob.test_cases)[0]
             )
             report_rows.append(
                 {

@@ -561,23 +561,45 @@ def test_game_config_yaml_loads_into_cli_parser() -> None:
     assert args.hide_test_results is True
     assert args.blind_attacker is False
     assert args.blind_defender is False
+    assert args.generated_dataset_dir == "generated_datasets"
+    assert args.save_generated_bugs is True
+    assert args.append_to_exam_benchmark is False
 
     # Verify BooleanOptionalAction toggles override YAML defaults cleanly
     toggled = parser.parse_args(
-        ["--no-strict-llm", "--no-hide-test-results", "--blind-attacker", "--blind-defender"]
+        [
+            "--no-strict-llm",
+            "--no-hide-test-results",
+            "--blind-attacker",
+            "--blind-defender",
+            "--no-save-generated-bugs",
+            "--append-to-exam-benchmark",
+            "--generated-dataset-dir",
+            "custom_bugs_dir",
+        ]
     )
     assert toggled.strict_llm is False
     assert toggled.hide_test_results is False
     assert toggled.blind_attacker is True
     assert toggled.blind_defender is True
+    assert toggled.save_generated_bugs is False
+    assert toggled.append_to_exam_benchmark is True
+    assert toggled.generated_dataset_dir == "custom_bugs_dir"
 
     untoggled = parser.parse_args(
-        ["--strict-llm", "--hide-test-results", "--no-blind-attacker", "--no-blind-defender"]
+        [
+            "--strict-llm",
+            "--hide-test-results",
+            "--no-blind-attacker",
+            "--no-blind-defender",
+            "--save-generated-bugs",
+        ]
     )
     assert untoggled.strict_llm is True
     assert untoggled.hide_test_results is True
     assert untoggled.blind_attacker is False
     assert untoggled.blind_defender is False
+    assert untoggled.save_generated_bugs is True
 
 
 def test_strict_llm_and_adaptive_local_cli_interaction(tmp_path: Path) -> None:
@@ -1442,3 +1464,248 @@ def test_phase3_exam_detection_metrics_and_pre_post_comparison_report(tmp_path: 
     )
     assert 0.0 <= ex_res.defender_bug_detection_rate <= 100.0
     assert 0.0 <= ex_res.defender_avg_test_pass_rate <= 100.0
+
+
+def test_phase4_generated_bug_dataset_collector_filtering_dedup_and_benchmark_export(
+    tmp_path: Path,
+) -> None:
+    """Phase 4: Verify strict 1-2 test real-bug gate, AST dedup, persistence, validation, and post-run sync."""
+    import json
+    import shutil
+    from ares.datasets.bug_collector import GeneratedBugDatasetStore
+
+    referee = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
+    problem = load_problems(exam=False)[0]  # MLCQ-TD-001
+    mut_1_broken = problem.candidate_mutations[0]  # breaks 1/5
+    mut_2_broken = problem.candidate_mutations[1]  # breaks 2/5
+    mut_over = problem.candidate_mutations[2]      # breaks 4/5
+
+    gen_dir = tmp_path / "gen_bugs"
+    store = GeneratedBugDatasetStore(output_dir=gen_dir)
+
+    def _record(turn: int, mut_code: str, defect: str, repaired_code: str) -> dict:
+        att = AttackerOutput(
+            mutated_code=mut_code,
+            injected_defect_type=defect,
+            targeted_edge_case="edge",
+            attack_strategy=f"strat_{turn}",
+            explanation="test",
+            used_llm=True,
+        )
+        dfn = DefenderOutput(
+            is_defective=True,
+            predicted_defect_type=defect,
+            defect_location_line=4,
+            diagnosis="diag",
+            defense_strategy="fix",
+            repaired_code=repaired_code,
+            used_llm=True,
+        )
+        v = referee.evaluate_turn(turn, problem, att, dfn)
+        return store.record_turn_bug(
+            run_id="run-1",
+            turn_id=turn,
+            problem=problem,
+            attacker_output=att,
+            defender_output=dfn,
+            verdict=v,
+            referee=referee,
+            attacker_model="qwen2.5-coder:7b",
+            defender_model="qwen2.5-coder:7b",
+        )
+
+    # 1. Valid 1-broken bug caught by Defender -> MUST BE SAVED (evaded_defender=False)
+    r1 = _record(1, mut_1_broken.mutated_code, mut_1_broken.defect_type, problem.clean_code)
+    assert r1["status"] == "saved" and r1["sample_id"] == "GEN-0001"
+
+    # 2. Same bug with extra comment/whitespace -> MUST BE DEDUPLICATED
+    r2 = _record(
+        2,
+        mut_1_broken.mutated_code + "\n# formatting change only\n",
+        mut_1_broken.defect_type,
+        problem.clean_code,
+    )
+    assert r2["status"] == "duplicate"
+
+    # 3. Valid 2-broken bug evading Defender -> MUST BE SAVED (evaded_defender=True)
+    r3 = _record(3, mut_2_broken.mutated_code, mut_2_broken.defect_type, mut_2_broken.mutated_code)
+    assert r3["status"] == "saved" and r3["sample_id"] == "GEN-0002"
+
+    # 4. Rejections: 0-broken no-op, comment-only clean, >2 over-broken, syntax error
+    r_noop = _record(
+        4,
+        problem.clean_code.replace("return best", "return best + 0"),
+        "off_by_one_boundary",
+        problem.clean_code,
+    )
+    r_comment = _record(5, problem.clean_code + "# comment\n", "off_by_one_boundary", problem.clean_code)
+    r_over = _record(6, mut_over.mutated_code, mut_over.defect_type, problem.clean_code)
+    r_syn = _record(7, "def max_subarray_sum(nums:\n    pass\n", "off_by_one_boundary", problem.clean_code)
+    assert r_noop["status"] == "rejected"
+    assert r_comment["status"] == "rejected"
+    assert r_over["status"] == "rejected"
+    assert r_syn["status"] == "rejected"
+
+    summary = store.get_summary()
+    assert summary["total_saved_bugs"] == 2
+    assert summary["evaded_defender_count"] == 1
+    assert summary["caught_by_defender_count"] == 1
+    assert summary["duplicates_skipped_this_run"] == 1
+    assert summary["rejected_this_run"] == 4
+
+    # 5. Generated exam benchmark JSON must pass PlugAndPlayDatasetAdapter validation 100%
+    report = PlugAndPlayDatasetAdapter.validate_dataset_report(store.benchmark_json_path)
+    assert report["total_problems"] == 1
+    assert report["all_clean_code_valid"] is True
+    assert report["problems"][0]["valid_1_to_2_broken_mutations"] == 2
+
+    # 6. Persistence across runs: reloading store remembers fingerprints & continues numbering
+    store2 = GeneratedBugDatasetStore(output_dir=gen_dir)
+    assert store2.get_summary()["total_saved_bugs"] == 2
+    att_dup = AttackerOutput(
+        mutated_code=mut_1_broken.mutated_code,
+        injected_defect_type=mut_1_broken.defect_type,
+        targeted_edge_case="edge",
+        attack_strategy="dup",
+        explanation="dup",
+    )
+    dfn_dup = DefenderOutput(
+        is_defective=True,
+        predicted_defect_type=mut_1_broken.defect_type,
+        defect_location_line=1,
+        diagnosis="d",
+        defense_strategy="s",
+        repaired_code=problem.clean_code,
+    )
+    v_dup = referee.evaluate_turn(1, problem, att_dup, dfn_dup)
+    r_cross_dup = store2.record_turn_bug(
+        run_id="run-2",
+        turn_id=1,
+        problem=problem,
+        attacker_output=att_dup,
+        defender_output=dfn_dup,
+        verdict=v_dup,
+        referee=referee,
+    )
+    assert r_cross_dup["status"] == "duplicate"
+
+    # 7. Optional post-run sync into a copy of external_exam_benchmark.json stays valid & idempotent
+    orig_exam = Path(__file__).resolve().parents[1] / "ares" / "datasets" / "external_exam_benchmark.json"
+    exam_copy = tmp_path / "exam_copy.json"
+    shutil.copy2(orig_exam, exam_copy)
+    sync1 = store2.append_to_exam_benchmark(exam_copy)
+    assert sync1["new_problems_added"] == 1
+    assert sync1["new_mutations_added"] == 2
+    sync2 = store2.append_to_exam_benchmark(exam_copy)
+    assert sync2["new_problems_added"] == 0
+    assert sync2["new_mutations_added"] == 0
+    assert sync2["skipped_existing"] == 2
+    val_synced = PlugAndPlayDatasetAdapter.validate_dataset_report(exam_copy)
+    assert val_synced["all_clean_code_valid"] is True
+    assert val_synced["total_problems"] == 7
+
+    # 8. End-to-end orchestrator wiring records verified bugs cleanly
+    llm = LocalLLMClient(mode="adaptive_local")
+    orch_gen_dir = tmp_path / "orch_gen_bugs"
+    orch_collector = GeneratedBugDatasetStore(output_dir=orch_gen_dir)
+    orch = ARESLangGraphOrchestrator(
+        problems=load_problems(exam=False)[:2],
+        exam_problems=load_problems(exam=True)[:2],
+        attacker=AttackerAgent(llm_client=llm, hide_test_results=True),
+        defender=DefenderAgent(llm_client=llm, hide_test_results=True),
+        referee=referee,
+        memory=CogneeMemoryManager(store_dir=tmp_path / "p4_mem", backend="local_graph"),
+        output_dir=tmp_path / "p4_out",
+        bug_collector=orch_collector,
+    )
+    sb = orch.run_self_play(num_turns=2, exam_interval=2, run_baseline_exam=True)
+    assert sb["generated_bug_dataset"]["total_saved_bugs"] >= 2
+    assert (orch_gen_dir / "generated_bugs.jsonl").exists()
+    assert (orch_gen_dir / "generated_exam_benchmark.json").exists()
+    assert (orch_gen_dir / "dataset_manifest.json").exists()
+    loaded_manifest = json.loads((orch_gen_dir / "dataset_manifest.json").read_text(encoding="utf-8"))
+    assert loaded_manifest["total_saved_bugs"] == sb["generated_bug_dataset"]["total_saved_bugs"]
+
+    # 9. Empty store flush creates all 3 manifest files and passes validate_dataset_report cleanly
+    empty_dir = tmp_path / "empty_gen_bugs"
+    empty_store = GeneratedBugDatasetStore(output_dir=empty_dir)
+    empty_summary = empty_store.flush()
+    assert empty_summary["total_saved_bugs"] == 0
+    assert (empty_dir / "generated_bugs.jsonl").exists()
+    assert (empty_dir / "generated_exam_benchmark.json").exists()
+    assert (empty_dir / "dataset_manifest.json").exists()
+    empty_val = PlugAndPlayDatasetAdapter.validate_dataset_report(empty_store.benchmark_json_path)
+    assert empty_val["total_problems"] == 0 and empty_val["all_clean_code_valid"] is True
+
+    # 10. Gap + corrupt line resilience keeps sample_id unique/monotonic & prevents cross-problem fn_name collision
+    gap_dir = tmp_path / "gap_gen_bugs"
+    gap_dir.mkdir(parents=True, exist_ok=True)
+    first_rec = json.loads(store.jsonl_path.read_text(encoding="utf-8").splitlines()[0])
+    first_rec["sample_id"] = "GEN-0005"
+    (gap_dir / "generated_bugs.jsonl").write_text(
+        json.dumps(first_rec) + "\n{broken json\n" + json.dumps({"incomplete": True}) + "\n",
+        encoding="utf-8",
+    )
+    gap_store = GeneratedBugDatasetStore(output_dir=gap_dir)
+    att_new = AttackerOutput(
+        mutated_code=mut_2_broken.mutated_code,
+        injected_defect_type=mut_2_broken.defect_type,
+        targeted_edge_case="edge",
+        attack_strategy="gap_test",
+        explanation="gap_test",
+    )
+    dfn_new = DefenderOutput(
+        is_defective=True,
+        predicted_defect_type=mut_2_broken.defect_type,
+        defect_location_line=1,
+        diagnosis="d",
+        defense_strategy="s",
+        repaired_code=problem.clean_code,
+    )
+    v_new = referee.evaluate_turn(1, problem, att_new, dfn_new)
+    r_gap = gap_store.record_turn_bug(
+        run_id="run-gap",
+        turn_id=1,
+        problem=problem,
+        attacker_output=att_new,
+        defender_output=dfn_new,
+        verdict=v_new,
+        referee=referee,
+    )
+    assert r_gap["status"] == "saved" and r_gap["sample_id"] == "GEN-0006"
+
+    # A different problem sharing the same function_name (different clean_code/tests) must NOT absorb mutations
+    same_fn_exam = tmp_path / "same_fn_exam.json"
+    same_fn_exam.write_text(
+        json.dumps(
+            [
+                {
+                    "problem_id": f"GEN-{problem.problem_id}",
+                    "title": "Different problem with same function name",
+                    "mlcq_category": "Custom",
+                    "severity": "major",
+                    "function_name": problem.function_name,
+                    "description": "Returns sum instead of max subarray",
+                    "clean_code": f"def {problem.function_name}(nums):\n    return sum(nums)\n",
+                    "test_cases": [
+                        {
+                            "test_id": "T1",
+                            "description": "sum test",
+                            "call_expr": f"{problem.function_name}([1, 2, 3])",
+                            "expected_output": 6,
+                            "is_edge_case": False,
+                        }
+                    ],
+                    "candidate_mutations": [],
+                }
+            ],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    sync_diff = gap_store.append_to_exam_benchmark(same_fn_exam)
+    assert sync_diff["new_problems_added"] == 1
+    assert sync_diff["total_problems_in_target"] == 2
+    synced_items = json.loads(same_fn_exam.read_text(encoding="utf-8"))
+    assert synced_items[0]["candidate_mutations"] == []
+    assert synced_items[1]["problem_id"] == f"GEN-{problem.problem_id}-2"
