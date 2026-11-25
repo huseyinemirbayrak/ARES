@@ -42,6 +42,14 @@ def _code_ast_fingerprint(problem_id: str, code: str) -> str:
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _mutation_record_fingerprint(
+    problem_id: str, function_name: str, clean_code: str, buggy_code: str
+) -> str:
+    """Compute a collision-free AST fingerprint scoped by problem ID, function name, and clean AST."""
+    clean_fp = _code_ast_fingerprint(problem_id, clean_code)
+    return _code_ast_fingerprint(f"{problem_id}::{function_name}::{clean_fp}", buggy_code)
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write file atomically via temporary sibling + os.replace() to prevent partial writes."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -103,13 +111,20 @@ class GeneratedBugDatasetStore:
                 self._used_sample_ids.add(sid)
                 if sid.startswith("GEN-") and sid[4:].isdigit():
                     max_num = max(max_num, int(sid[4:]))
-            fp = rec.get("fingerprint") or _code_ast_fingerprint(
+            canonical_fp = _mutation_record_fingerprint(
                 str(rec.get("source_problem_id", "")),
+                str(rec.get("function_name", "")),
+                str(rec.get("clean_code", "")),
                 str(rec.get("buggy_code", "")),
             )
-            rec["fingerprint"] = fp
-            if fp not in self._fingerprints:
-                self._fingerprints.add(fp)
+            stored_fp = str(rec.get("fingerprint") or "").strip()
+            rec["fingerprint"] = stored_fp or canonical_fp
+            if canonical_fp not in self._fingerprints and (
+                not stored_fp or stored_fp not in self._fingerprints
+            ):
+                self._fingerprints.add(canonical_fp)
+                if stored_fp:
+                    self._fingerprints.add(stored_fp)
                 self._records.append(rec)
         self._next_sample_num = max(max_num, len(self._records)) + 1
 
@@ -181,8 +196,13 @@ class GeneratedBugDatasetStore:
             self._bump_rejection(reason)
             return {"status": "rejected", "reason": reason}
 
-        # 2. AST-normalized deduplication across current and prior runs
-        fp = _code_ast_fingerprint(problem.problem_id, attacker_output.mutated_code)
+        # 2. AST-normalized deduplication scoped by problem + function + clean AST
+        fp = _mutation_record_fingerprint(
+            problem.problem_id,
+            problem.function_name,
+            problem.clean_code,
+            attacker_output.mutated_code,
+        )
         if fp in self._fingerprints:
             self.duplicates_skipped += 1
             return {"status": "duplicate", "fingerprint": fp}
@@ -239,12 +259,22 @@ class GeneratedBugDatasetStore:
 
     def build_exam_benchmark_entries(self) -> list[dict[str, Any]]:
         """Group all saved verified bugs into exact `external_exam_benchmark.json` (`CodeProblem`) schema."""
-        grouped: dict[str, dict[str, Any]] = {}
+        grouped: dict[tuple[str, str], dict[str, Any]] = {}
+        used_problem_ids: set[str] = set()
         for rec in self._records:
             src_id = str(rec["source_problem_id"])
-            if src_id not in grouped:
-                grouped[src_id] = {
-                    "problem_id": f"GEN-{src_id}",
+            prob_sig = self._problem_signature(rec)
+            group_key = (src_id, prob_sig)
+            if group_key not in grouped:
+                base_pid = f"GEN-{src_id}"
+                pid = base_pid
+                suffix_idx = 2
+                while pid in used_problem_ids:
+                    pid = f"{base_pid}-{suffix_idx}"
+                    suffix_idx += 1
+                used_problem_ids.add(pid)
+                grouped[group_key] = {
+                    "problem_id": pid,
                     "title": rec.get("title") or f"Generated Benchmark: {rec['function_name']}",
                     "mlcq_category": rec.get("mlcq_category") or "ARES Attacker-Generated Subtle Bugs",
                     "severity": rec.get("severity") or "major",
@@ -265,7 +295,7 @@ class GeneratedBugDatasetStore:
                 explanation=rec.get("explanation") or "Verified 1-2 test-breaking mutation.",
                 expected_broken_count=int(rec["broken_test_count"]),
             )
-            grouped[src_id]["candidate_mutations"].append(mut.model_dump())
+            grouped[group_key]["candidate_mutations"].append(mut.model_dump())
         return list(grouped.values())
 
     def get_summary(self) -> dict[str, Any]:

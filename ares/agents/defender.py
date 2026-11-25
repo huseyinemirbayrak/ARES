@@ -23,7 +23,7 @@ from ares.models import (
     safe_bool,
     safe_int,
 )
-from ares.referee.deterministic_referee import DeterministicReferee
+from ares.referee.deterministic_referee import DeterministicReferee, _ast_equal
 
 logger = logging.getLogger(__name__)
 
@@ -294,13 +294,13 @@ class DefenderAgent:
                 if parsed_is_defective is not None
                 else (claimed_cat != "clean")
             )
-            if claimed_defective and claimed_cat != "clean" and code.strip() == mutated_code.strip():
+            if claimed_defective and claimed_cat != "clean" and _ast_equal(code, mutated_code):
                 return (
                     False,
                     "claimed a defect (`is_defective=true`) but returned `repaired_code` identical to input",
                 )
             return True, "ok"
-        if attacker_suite.failed_count > 0 and code.strip() == mutated_code.strip():
+        if attacker_suite.failed_count > 0 and _ast_equal(code, mutated_code):
             return False, "repaired_code is identical to defective mutated_code while tests are failing"
         return True, "ok"
 

@@ -20,7 +20,7 @@ from ares.models import (
     normalize_defect_category,
     safe_int,
 )
-from ares.referee.deterministic_referee import DeterministicReferee
+from ares.referee.deterministic_referee import DeterministicReferee, _ast_equal
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +189,8 @@ class AttackerAgent:
         )
         if not has_fn:
             return False, f"Function definition `def {problem.function_name}` missing in AST"
-        if code.strip() == problem.clean_code.strip():
-            return False, "mutated_code is identical to clean_code (no-op)"
+        if _ast_equal(code, problem.clean_code):
+            return False, "mutated_code is AST-identical to clean_code (comment/whitespace no-op)"
         return True, "ok"
 
     def _validate_llm_attack(

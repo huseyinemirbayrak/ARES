@@ -8,7 +8,8 @@
 
 1. **5 Bölümlü Yapılandırılmış Prompt Sistemi (`StructuredPromptConfig`)**:
    - Attacker ve Defender ajanları YAML üzerinden parametre kontrollü 5 bölümlü promptlarla (`Task`, `Recipe`, `Output`, `Validation`, `Examples`) yönetilir ([attacker_prompt.yaml](configs/prompts/attacker_prompt.yaml), [defender_prompt.yaml](configs/prompts/defender_prompt.yaml)).
-   - `--blind-attacker` / `--blind-defender` (`--no-blind-*`) bayraklarıyla testlerin görünürlüğü kapatılıp açılabilir; `--strict-llm` varsayılan olarak açıktır (LLM'siz AST heuristic baseline için `--no-strict-llm` kullanılır).
+   - **Testleri Gör, Sonuçları Görme (`--hide-test-results`, varsayılan: AÇIK):** İki taraf da fonksiyon kodunu ve birim test tanımlarını (`call_expr == expected_output`) görür; ancak test çalıştırma sonuçlarını (kaç testin kaldığı, hangi testlerin patladığı, hata mesajları) hiçbir aşamada görmez.
+   - `--blind-attacker` / `--blind-defender` (`--no-blind-*`) bayraklarıyla test tanımları da tamamen gizlenebilir; `--strict-llm` varsayılan olarak açıktır (LLM'siz AST heuristic baseline için `--no-strict-llm` kullanılır).
 
 2. **Gerçek LangGraph Orkestratörü (`ARESLangGraphOrchestrator`)**:
    - Gerçek `langgraph.graph.StateGraph` + `MemorySaver` checkpoint yapısıyla çalışır:
@@ -22,9 +23,13 @@
 
 4. **%100 Deterministik, Subprocess-İzole Hakem (`DeterministicReferee`)**:
    - Kodları temiz ortam değişkenleriyle izole alt süreçte çalıştırır (timeout öldürme + AST güvenlik filtresi).
-   - 1–2 test bozma (subtle attack) kuralını uygular, deterministik ödül + ELO günceller ve `ground_truth_source` (`curated` / `ast_diff` / `attacker_claim`) bilgisini kaydeder.
+   - **1–2 Test Bozma Kuralı:** Attacker en az 1, en fazla 2 testi bozarak ince (subtle) bir bug üretmelidir (0 test bozan no-op, yorum değişikliği veya >2 test bozan yıkıcı mutasyonlar geçersizdir). Geçerli 1–2 test bozan bug'da Defender tüm testlerden (%100) geçerse **Defender kazanır**, en az 1 test kalırsa **Attacker kazanır**.
 
-5. **Tak-Çıkar Veriseti Adaptörü (`PlugAndPlayDatasetAdapter`)**:
+5. **Ana Test (`external_exam_benchmark.json`), Önce/Sonra Gelişim Raporu ve Doğrulanmış Bug Veriseti Üretimi**:
+   - Oyun başlamadan önce (**Turn 0**) sabit ana test seti (`ares/datasets/external_exam_benchmark.json`) üzerinde Defender'ın bug tespit, sınıflandırma ve tam onarım başarısı ölçülür; self-play bittikten sonra (**Turn N**) aynı test tekrar koşulup `outputs/pre_post_comparison.md` ve `outputs/pre_post_comparison.json` dosyalarında problem bazlı gelişim (`GAINED`, `REGRESSED`, `ALWAYS_SOLVED`, `STILL_UNSOLVED`) raporlanır.
+   - Oyun boyunca Attacker'ın ürettiği ve Hakem tarafından **gerçekten 1–2 test kırdığı doğrulanan** tüm benzersiz bug'lar (hem Defender'ı yenenler hem Defender'ın yakaladıkları) AST tekilleştirmesiyle `generated_datasets/` klasörüne (`generated_bugs.jsonl`, `generated_exam_benchmark.json`, `dataset_manifest.json`) kaydedilir.
+
+6. **Tak-Çıkar Veriseti Adaptörü (`PlugAndPlayDatasetAdapter`)**:
    - `.json`, `.jsonl`, `.yaml`, `.csv` dosyalarının yanında yerleşik benchmark alias'larını destekler: `quixbugs` (40 metot), `agent_green` (12 metot), `cleanvul` (5 metot), `all_new` (57 metot).
 
 ---
@@ -65,10 +70,21 @@ uv sync --extra cognee
 
 ## Komut Satırı (CLI) Kullanım Rehberi
 
-### 1. Öz-Oyun Çalıştırma (Yerel Ollama, LM Studio/vLLM veya OpenAI-Uyumlu API)
+### 1. Ana Deney Akışı: Turn 0 (Pre) -> Self-Play -> Turn N (Post) + Bug Veriseti Üretimi
 ```powershell
-# Temiz başlangıç (--fresh-memory) + Yerel Ollama + Saf LLM + Blind Mode
-.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 15 --exam-interval 5 --llm-mode ollama --attacker-model qwen2.5-coder:7b --defender-model qwen2.5-coder:7b --strict-llm --blind-attacker --blind-defender
+# Standart bilimsel deney: İki taraf sadece test tanımlarını görür (--hide-test-results varsayılan AÇIK),
+# Turn 0 ve Turn 15'te external_exam_benchmark.json koşulur, doğrulanmış bug'lar generated_datasets/ altına yazılır:
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 15 --exam-interval 15 --llm-mode ollama --attacker-model qwen2.5-coder:7b --defender-model qwen2.5-coder:7b
+
+# Üretilen Önce/Sonra gelişim raporunu ve üretilen bug verisetini doğrula:
+Get-Content .\outputs\pre_post_comparison.md
+.\.venv\Scripts\python.exe run_ares.py --validate-dataset .\generated_datasets\generated_exam_benchmark.json
+
+# Üretilen doğrulanmış bug'ları bir sonraki deneyde doğrudan sınav seti olarak kullan:
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --exam-dataset .\generated_datasets\generated_exam_benchmark.json --turns 10 --exam-interval 10
+
+# (Opsiyonel) Turn N sınavı bittikten sonra yeni doğrulanmış bug'ları hedef sınav JSON'una da birleştir:
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 15 --exam-interval 15 --append-to-exam-benchmark
 
 # Gerçek Cognee SDK ile (Ollama + nomic-embed-text)
 .\.venv\Scripts\python.exe run_ares.py --fresh-memory --memory-backend cognee --embedding-model nomic-embed-text --cognify-interval 3 --turns 15 --exam-interval 5
@@ -79,8 +95,11 @@ uv sync --extra cognee
 # Bulut LLM + OpenAI embedding (boyut otomatik 1536 olarak çözümlenir)
 .\.venv\Scripts\python.exe run_ares.py --fresh-memory --base-url https://api.openai.com/v1 --api-key $env:OPENAI_API_KEY --attacker-model gpt-4o-mini --defender-model gpt-4o-mini --memory-backend cognee --embedding-model text-embedding-3-small
 
+# Tam kapalı-kutu (test tanımları da gizli) mod:
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 15 --exam-interval 5 --blind-attacker --blind-defender
+
 # Çevrimdışı (LLM'siz) AST heuristic baseline testi
-.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 10 --exam-interval 5 --llm-mode adaptive_local --no-strict-llm
+.\.venv\Scripts\python.exe run_ares.py --fresh-memory --turns 10 --exam-interval 5 --llm-mode adaptive_local
 ```
 
 ### 2. Veriseti Doğrulama ve Benchmark Seçimi
@@ -109,6 +128,8 @@ uv sync --extra cognee
 
 ### 4. Önemli CLI Seçenekleri
 - `--fresh-memory`: Turn-0 cold-start ölçümü için önceki hafıza deposunu temizler.
+- `--hide-test-results` / `--no-hide-test-results`: Test tanımlarını iki tarafa da gösterip test çalıştırma sonuçlarını gizler (`game_config.yaml` varsayılanı: açık).
+- `--generated-dataset-dir`, `--save-generated-bugs` / `--no-save-generated-bugs`, `--append-to-exam-benchmark`: Hakem onaylı 1–2 test bozan bug veriseti kaydı ve opsiyonel sınav birleştirme ayarları.
 - `--memory-backend {auto,cognee,local_graph}`: Hafıza arka ucu seçimi.
 - `--embedding-provider`, `--embedding-model`, `--embedding-dimensions`, `--cognee-search-type`, `--cognify-interval`: Gerçek Cognee ayarları.
 - `--llm-mode {auto,ollama,openai_compatible,adaptive_local}`, `--base-url`, `--api-key`, `--llm-timeout`, `--num-ctx`: LLM sağlayıcı ve bağlam penceresi ayarları.

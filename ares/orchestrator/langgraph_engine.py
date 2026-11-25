@@ -379,19 +379,28 @@ class ARESLangGraphOrchestrator:
         summary = self._persist_outputs(final_state)
         return summary
 
+    @staticmethod
+    def _atomic_write_text(path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(text, encoding="utf-8")
+        os.replace(tmp_path, path)
+
     def _persist_outputs(self, final_state: ARESGraphState) -> dict[str, Any]:
         """Write JSONL turn logs, external exam comparisons, and honest scoreboard summary."""
         turns = list(self._turn_records)
         exams = list(self._exam_records)
 
         turns_path = self.output_dir / "self_play_turns.jsonl"
-        with turns_path.open("w", encoding="utf-8") as f:
-            for t in turns:
-                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+        self._atomic_write_text(
+            turns_path,
+            "".join(json.dumps(t, ensure_ascii=False) + "\n" for t in turns),
+        )
 
         exams_path = self.output_dir / "external_exams.json"
-        exams_path.write_text(
-            json.dumps(exams, indent=2, ensure_ascii=False), encoding="utf-8"
+        self._atomic_write_text(
+            exams_path,
+            json.dumps(exams, indent=2, ensure_ascii=False) + "\n",
         )
 
         total_turns = len(turns)
@@ -456,18 +465,14 @@ class ARESLangGraphOrchestrator:
             pre_post_comparison = build_pre_post_comparison(first_ex, last_ex)
             pre_post_json_path = self.output_dir / "pre_post_comparison.json"
             pre_post_md_path = self.output_dir / "pre_post_comparison.md"
-            tmp_json = pre_post_json_path.with_suffix(".json.tmp")
-            tmp_json.write_text(
-                json.dumps(pre_post_comparison, indent=2, ensure_ascii=False),
-                encoding="utf-8",
+            self._atomic_write_text(
+                pre_post_json_path,
+                json.dumps(pre_post_comparison, indent=2, ensure_ascii=False) + "\n",
             )
-            os.replace(tmp_json, pre_post_json_path)
-            tmp_md = pre_post_md_path.with_suffix(".md.tmp")
-            tmp_md.write_text(
+            self._atomic_write_text(
+                pre_post_md_path,
                 render_pre_post_markdown(pre_post_comparison),
-                encoding="utf-8",
             )
-            os.replace(tmp_md, pre_post_md_path)
             pre_post_report_paths = {
                 "json": str(pre_post_json_path),
                 "markdown": str(pre_post_md_path),
@@ -548,7 +553,8 @@ class ARESLangGraphOrchestrator:
         }
 
         scoreboard_path = self.output_dir / "scoreboard_summary.json"
-        scoreboard_path.write_text(
-            json.dumps(scoreboard, indent=2, ensure_ascii=False), encoding="utf-8"
+        self._atomic_write_text(
+            scoreboard_path,
+            json.dumps(scoreboard, indent=2, ensure_ascii=False) + "\n",
         )
         return scoreboard

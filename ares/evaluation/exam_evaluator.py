@@ -58,17 +58,28 @@ class ExternalExamEvaluator:
 
             # Part B: Evaluate Defender's ability to detect, classify & repair the canonical subtle defect
             canonical_mut = None
+            canonical_suite = None
             if problem.candidate_mutations:
-                canonical_mut = next(
-                    (
-                        m
-                        for m in problem.candidate_mutations
+                ordered_cands = sorted(
+                    problem.candidate_mutations,
+                    key=lambda m: (
+                        0
                         if self.referee.min_broken_tests
                         <= m.expected_broken_count
                         <= self.referee.max_broken_tests
+                        else 1
                     ),
-                    problem.candidate_mutations[0],
                 )
+                for cand in ordered_cands:
+                    ok_cand, _, cand_suite = self.referee.verify_bug_mutation(
+                        problem.clean_code, cand.mutated_code, problem.test_cases
+                    )
+                    if ok_cand:
+                        canonical_mut = cand
+                        canonical_suite = cand_suite
+                        break
+                if canonical_mut is None:
+                    canonical_mut = ordered_cands[0]
             else:
                 from ares.agents.ast_mutator import ASTSurgicalMutator
                 from ares.models import CandidateMutation
@@ -77,11 +88,12 @@ class ExternalExamEvaluator:
                     problem.clean_code, problem.function_name
                 )
                 for cand in cands:
-                    ok_cand, _, _ = self.referee.verify_bug_mutation(
+                    ok_cand, _, cand_suite = self.referee.verify_bug_mutation(
                         problem.clean_code, cand.mutated_code, problem.test_cases
                     )
                     if ok_cand:
                         canonical_mut = cand
+                        canonical_suite = cand_suite
                         break
                 if canonical_mut is None and cands:
                     canonical_mut = cands[0]
@@ -95,9 +107,10 @@ class ExternalExamEvaluator:
                         explanation=att_out.explanation,
                         expected_broken_count=max(1, att_suite.failed_count),
                     )
-            canonical_suite = self.referee.execute_test_suite(
-                canonical_mut.mutated_code, problem.test_cases
-            )
+            if canonical_suite is None:
+                canonical_suite = self.referee.execute_test_suite(
+                    canonical_mut.mutated_code, problem.test_cases
+                )
             def_out = defender.defend(
                 problem=problem,
                 mutated_code=canonical_mut.mutated_code,

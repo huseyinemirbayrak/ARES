@@ -1709,3 +1709,315 @@ def test_phase4_generated_bug_dataset_collector_filtering_dedup_and_benchmark_ex
     synced_items = json.loads(same_fn_exam.read_text(encoding="utf-8"))
     assert synced_items[0]["candidate_mutations"] == []
     assert synced_items[1]["problem_id"] == f"GEN-{problem.problem_id}-2"
+
+
+def test_phase5_end_to_end_pipeline_pre_post_and_generated_dataset(
+    tmp_path: Path,
+) -> None:
+    """Phase 5: Full E2E verification of Turn 0 -> Self-Play -> Bug Dataset -> Turn N Pre/Post delta & CLI."""
+    import hashlib
+    import json
+    import shutil
+    from ares.cli import main as cli_main
+    from ares.datasets.bug_collector import GeneratedBugDatasetStore
+    from ares.models import CodeProblem, UnitTestCase
+
+    canonical_exam_path = (
+        Path(__file__).resolve().parents[1] / "ares" / "datasets" / "external_exam_benchmark.json"
+    )
+    sha_before = hashlib.sha256(canonical_exam_path.read_bytes()).hexdigest()
+
+    arena_problems = load_problems(exam=False)[:2]  # MLCQ-TD-001, MLCQ-TD-002
+    exam_problems = load_problems(exam=True)[:2]    # EXAM-TD-101, EXAM-TD-102
+    p_arena_1, p_arena_2 = arena_problems[0], arena_problems[1]
+    p_exam_1, p_exam_2 = exam_problems[0], exam_problems[1]
+
+    seen_prompts: list[tuple[str, str, str]] = []
+    arena_1_call_idx = 0
+
+    class ProtocolMockLLM(LocalLLMClient):
+        """Simulates strict LLM Attacker & Defender learning across Turn 0 -> Self-Play -> Turn 4."""
+
+        def __init__(self, role: str) -> None:
+            super().__init__(mode="ollama", model_name=f"mock-{role}:7b")
+            self.role = role
+
+        def is_live_llm_available(self) -> bool:
+            return True
+
+        def generate_json(self, system_prompt: str, user_prompt: str) -> dict | None:
+            nonlocal arena_1_call_idx
+            seen_prompts.append((self.role, system_prompt, user_prompt))
+
+            # Protocol Check 1: Neither agent ever sees test execution outcomes or raw pass/fail ratios
+            assert "tests failing" not in user_prompt
+            assert "Failing Deterministic Unit Tests" not in user_prompt
+            assert "Expected " not in user_prompt
+            assert "1/5" not in user_prompt and "4/5" not in user_prompt
+            mem_section = system_prompt.split("=== [RETRIEVED EPISODIC & DIFF MEMORY", 1)[1]
+            assert "tests failing" not in mem_section
+            assert "1/5" not in mem_section and "4/5" not in mem_section
+
+            if self.role == "attacker":
+                if p_exam_1.problem_id in user_prompt:
+                    m = p_exam_1.candidate_mutations[0]
+                    return {
+                        "mutated_code": m.mutated_code,
+                        "injected_defect_type": m.defect_type,
+                        "targeted_edge_case": m.targeted_edge_case,
+                        "attack_strategy": m.strategy_name,
+                        "expected_failing_tests": 1,
+                        "explanation": m.explanation,
+                    }
+                if p_exam_2.problem_id in user_prompt:
+                    m = p_exam_2.candidate_mutations[0]
+                    return {
+                        "mutated_code": m.mutated_code,
+                        "injected_defect_type": m.defect_type,
+                        "targeted_edge_case": m.targeted_edge_case,
+                        "attack_strategy": m.strategy_name,
+                        "expected_failing_tests": 1,
+                        "explanation": m.explanation,
+                    }
+                if p_arena_1.problem_id in user_prompt:
+                    arena_1_call_idx += 1
+                    if arena_1_call_idx == 1:
+                        # Turn 1: subtle 1-broken bug (caught by Defender -> saved)
+                        m = p_arena_1.candidate_mutations[0]
+                        return {
+                            "mutated_code": m.mutated_code,
+                            "injected_defect_type": m.defect_type,
+                            "targeted_edge_case": m.targeted_edge_case,
+                            "attack_strategy": "subtle_neg_1",
+                            "expected_failing_tests": 1,
+                            "explanation": m.explanation,
+                        }
+                    if arena_1_call_idx == 2:
+                        # Turn 3: invalid >2 over-broken mutation (rejected from dataset, Attacker cannot win)
+                        m_over = p_arena_1.candidate_mutations[2]
+                        return {
+                            "mutated_code": m_over.mutated_code,
+                            "injected_defect_type": m_over.defect_type,
+                            "targeted_edge_case": m_over.targeted_edge_case,
+                            "attack_strategy": "over_broken_3",
+                            "expected_failing_tests": 4,
+                            "explanation": m_over.explanation,
+                        }
+                    # Turn 5: AST-duplicate of Turn 1 with extra comment (deduplicated)
+                    m_dup = p_arena_1.candidate_mutations[0]
+                    return {
+                        "mutated_code": m_dup.mutated_code + "\n# duplicate with comment\n",
+                        "injected_defect_type": m_dup.defect_type,
+                        "targeted_edge_case": m_dup.targeted_edge_case,
+                        "attack_strategy": "subtle_neg_dup",
+                        "expected_failing_tests": 1,
+                        "explanation": m_dup.explanation,
+                    }
+                # Turn 2 & Turn 4 on MLCQ-TD-002: subtle 2-broken bug (evades Defender)
+                m2 = p_arena_2.candidate_mutations[1]
+                return {
+                    "mutated_code": m2.mutated_code,
+                    "injected_defect_type": m2.defect_type,
+                    "targeted_edge_case": m2.targeted_edge_case,
+                    "attack_strategy": "subtle_p2",
+                    "expected_failing_tests": 2,
+                    "explanation": m2.explanation,
+                }
+
+            # Defender behavior:
+            if p_exam_1.problem_id in user_prompt:
+                # Improves on EXAM-TD-101 ONLY after learning verified negative_or_zero_edge_debt repair in memory!
+                if "Defect: negative_or_zero_edge_debt]" in mem_section:
+                    return {
+                        "is_defective": True,
+                        "predicted_defect_type": "negative_or_zero_edge_debt",
+                        "defect_location_line": 4,
+                        "diagnosis": "Zero initialization fails on all-negative readings.",
+                        "defense_strategy": "Initialize highest = readings[0]",
+                        "repaired_code": p_exam_1.clean_code,
+                    }
+                return {
+                    "is_defective": False,
+                    "predicted_defect_type": "clean",
+                    "defect_location_line": 1,
+                    "diagnosis": "Missed negative edge case before self-play.",
+                    "defense_strategy": "No change",
+                    "repaired_code": p_exam_1.candidate_mutations[0].mutated_code,
+                }
+            if p_exam_2.problem_id in user_prompt:
+                return {
+                    "is_defective": True,
+                    "predicted_defect_type": p_exam_2.candidate_mutations[0].defect_type,
+                    "defect_location_line": 5,
+                    "diagnosis": "Strict > 50.0 misses exact boundary 50.0.",
+                    "defense_strategy": "Use >= 50.0",
+                    "repaired_code": p_exam_2.clean_code,
+                }
+            if p_arena_1.problem_id in user_prompt:
+                return {
+                    "is_defective": True,
+                    "predicted_defect_type": p_arena_1.candidate_mutations[0].defect_type,
+                    "defect_location_line": 4,
+                    "diagnosis": "Zero-floor bug.",
+                    "defense_strategy": "Restore nums[0] init",
+                    "repaired_code": p_arena_1.clean_code,
+                }
+            # Fails to repair MLCQ-TD-002 so Attacker wins & evaded_defender=True is recorded
+            return {
+                "is_defective": False,
+                "predicted_defect_type": "clean",
+                "defect_location_line": 1,
+                "diagnosis": "Missed bug.",
+                "defense_strategy": "No change",
+                "repaired_code": p_arena_2.candidate_mutations[1].mutated_code,
+            }
+
+    mem_dir = tmp_path / "e2e_mem"
+    out_dir = tmp_path / "e2e_out"
+    gen_dir = tmp_path / "e2e_gen"
+    referee = DeterministicReferee(min_broken_tests=1, max_broken_tests=2)
+    collector = GeneratedBugDatasetStore(output_dir=gen_dir)
+    orch = ARESLangGraphOrchestrator(
+        problems=arena_problems,
+        exam_problems=exam_problems,
+        attacker=AttackerAgent(
+            llm_client=ProtocolMockLLM("attacker"), strict_llm=True, hide_test_results=True
+        ),
+        defender=DefenderAgent(
+            llm_client=ProtocolMockLLM("defender"), strict_llm=True, hide_test_results=True
+        ),
+        referee=referee,
+        memory=CogneeMemoryManager(store_dir=mem_dir, backend="local_graph"),
+        output_dir=out_dir,
+        bug_collector=collector,
+    )
+
+    scoreboard = orch.run_self_play(num_turns=5, exam_interval=5, run_baseline_exam=True)
+    assert len(seen_prompts) > 0
+
+    # Verify unit test definitions were shown to BOTH sides on every turn/exam
+    for _, _, u_prompt in seen_prompts:
+        assert "Unit Test Suite (" in u_prompt
+
+    # Verify Pre vs. Post improvement on held-out exam problems (Turn 0: 50% -> Turn 5: 100%)
+    pre_post = scoreboard["pre_post_comparison"]
+    assert pre_post["baseline_turn"] == 0 and pre_post["final_turn"] == 5
+    assert pre_post["metrics"]["defender_full_repair_rate"]["before"] == 50.0
+    assert pre_post["metrics"]["defender_full_repair_rate"]["after"] == 100.0
+    assert pre_post["metrics"]["defender_full_repair_rate"]["delta"] == 50.0
+    assert pre_post["metrics"]["defender_bug_detection_rate"]["delta"] == 50.0
+    assert pre_post["repair_transitions"]["gained"] == ["EXAM-TD-101"]
+    assert pre_post["repair_transitions"]["always_solved"] == ["EXAM-TD-102"]
+    assert (out_dir / "pre_post_comparison.json").exists()
+    assert (out_dir / "pre_post_comparison.md").exists()
+
+    # Verify GeneratedBugDatasetStore filtering (2 unique valid bugs: 1 caught + 1 evaded; 1 over-broken rejected; 2 AST duplicates skipped)
+    gen_summary = scoreboard["generated_bug_dataset"]
+    assert gen_summary["total_saved_bugs"] == 2
+    assert gen_summary["caught_by_defender_count"] == 1
+    assert gen_summary["evaded_defender_count"] == 1
+    assert gen_summary["rejected_this_run"] == 1
+    assert gen_summary["duplicates_skipped_this_run"] == 2
+
+    val_report = PlugAndPlayDatasetAdapter.validate_dataset_report(collector.benchmark_json_path)
+    assert val_report["total_problems"] == 2
+    assert val_report["all_clean_code_valid"] is True
+    assert all(r["valid_1_to_2_broken_mutations"] == 1 for r in val_report["problems"])
+
+    # Verify two distinct custom problems sharing `PLUG-TD-001` never merge or collide in GeneratedBugDatasetStore
+    p_plug_a = CodeProblem(
+        problem_id="PLUG-TD-001",
+        title="Plug A",
+        mlcq_category="Custom",
+        function_name="double_pos",
+        description="Double positive int else 0",
+        clean_code="def double_pos(x: int) -> int:\n    return x * 2 if x > 0 else 0\n",
+        test_cases=[
+            UnitTestCase(test_id="T1", description="pos", call_expr="double_pos(3)", expected_output=6),
+            UnitTestCase(test_id="T2", description="zero", call_expr="double_pos(0)", expected_output=0),
+            UnitTestCase(test_id="T3", description="neg", call_expr="double_pos(-2)", expected_output=0, is_edge_case=True),
+        ],
+    )
+    p_plug_b = CodeProblem(
+        problem_id="PLUG-TD-001",
+        title="Plug B",
+        mlcq_category="Custom",
+        function_name="triple_nonneg",
+        description="Triple non-negative int else -1",
+        clean_code="def triple_nonneg(x: int) -> int:\n    return x * 3 if x >= 0 else -1\n",
+        test_cases=[
+            UnitTestCase(test_id="T1", description="pos", call_expr="triple_nonneg(2)", expected_output=6),
+            UnitTestCase(test_id="T2", description="zero", call_expr="triple_nonneg(0)", expected_output=0, is_edge_case=True),
+            UnitTestCase(test_id="T3", description="neg", call_expr="triple_nonneg(-4)", expected_output=-1),
+        ],
+    )
+    for plug_prob, buggy_src in (
+        (p_plug_a, "def double_pos(x: int) -> int:\n    return x * 2 if x >= 0 else -1\n"),
+        (p_plug_b, "def triple_nonneg(x: int) -> int:\n    return x * 3 if x > 0 else -1\n"),
+    ):
+        att_p = AttackerOutput(
+            mutated_code=buggy_src,
+            injected_defect_type="off_by_one_boundary",
+            targeted_edge_case="zero",
+            attack_strategy="zero_shift",
+            explanation="shift",
+        )
+        dfn_p = DefenderOutput(
+            is_defective=True,
+            predicted_defect_type="off_by_one_boundary",
+            defect_location_line=2,
+            diagnosis="d",
+            defense_strategy="s",
+            repaired_code=plug_prob.clean_code,
+        )
+        vp = referee.evaluate_turn(1, plug_prob, att_p, dfn_p)
+        res_p = collector.record_turn_bug(
+            run_id="plug-collision",
+            turn_id=1,
+            problem=plug_prob,
+            attacker_output=att_p,
+            defender_output=dfn_p,
+            verdict=vp,
+            referee=referee,
+        )
+        assert res_p["status"] == "saved"
+
+    val_after_plug = PlugAndPlayDatasetAdapter.validate_dataset_report(collector.benchmark_json_path)
+    assert val_after_plug["total_problems"] == 4
+    assert val_after_plug["all_clean_code_valid"] is True
+
+    # Verify CLI end-to-end with post-run `--append-to-exam-benchmark` on an isolated copy of external_exam_benchmark.json
+    exam_copy = tmp_path / "cli_exam_copy.json"
+    shutil.copy2(canonical_exam_path, exam_copy)
+    cli_gen_dir = tmp_path / "cli_gen"
+    rc_run = cli_main(
+        [
+            "--fresh-memory",
+            "--turns",
+            "2",
+            "--exam-interval",
+            "2",
+            "--llm-mode",
+            "adaptive_local",
+            "--exam-dataset",
+            str(exam_copy),
+            "--memory-dir",
+            str(tmp_path / "cli_mem"),
+            "--output-dir",
+            str(tmp_path / "cli_out"),
+            "--generated-dataset-dir",
+            str(cli_gen_dir),
+            "--append-to-exam-benchmark",
+        ]
+    )
+    assert rc_run == 0
+    rc_val_gen = cli_main(["--validate-dataset", str(cli_gen_dir / "generated_exam_benchmark.json")])
+    assert rc_val_gen == 0
+    rc_val_synced = cli_main(["--validate-dataset", str(exam_copy)])
+    assert rc_val_synced == 0
+    synced_exam_items = json.loads(exam_copy.read_text(encoding="utf-8"))
+    assert len(synced_exam_items) == 8  # 6 original exam problems + 2 newly synced generated problems
+
+    # Canonical repo benchmark MUST remain 100% untouched!
+    sha_after = hashlib.sha256(canonical_exam_path.read_bytes()).hexdigest()
+    assert sha_before == sha_after
